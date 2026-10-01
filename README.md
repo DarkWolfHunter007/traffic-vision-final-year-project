@@ -133,6 +133,53 @@ The resulting data can be exported for use by later traffic and emission-analysi
 
 * FFmpeg
 
+
+## Master Prompt and Phase Prompts
+
+All implementation prompts are stored in the top-level `prompts/` directory.
+
+```text
+prompts/
+├── master_prompt.md
+├── phase_01_video_input_and_playback.md
+├── phase_02_yolo_detection.md
+├── phase_03_bytetrack_integration.md
+├── phase_04_trajectories_and_visualization.md
+├── phase_05_roi_and_counting_lines.md
+├── phase_06_vehicle_counting.md
+├── phase_07_camera_calibration.md
+├── phase_08_speed_estimation.md
+├── phase_09_queue_detection.md
+├── phase_10_manual_review.md
+├── phase_11_active_learning_dataset.md
+├── phase_12_model_evaluation.md
+└── phase_13_export_and_dashboard.md
+```
+
+The master prompt defines the complete system architecture, research context, constraints, and implementation principles. Phase prompts are intentionally bounded and must be executed sequentially.
+
+Each phase prompt defines its scope, dependencies, deliverables, completion criteria, and explicit exclusions. Later-stage functionality must not be silently implemented early.
+
+Independent prompt checking, implementation review, testing review, and completion verification are performed separately by Pro subagents. The normal implementation model must not claim independent acceptance.
+
+## Implementation Order
+
+1. Video input and playback
+2. YOLO detection
+3. ByteTrack integration
+4. Trajectories and visualization
+5. ROI and counting lines
+6. Vehicle counting
+7. Camera calibration
+8. Speed estimation
+9. Queue detection
+10. Manual review
+11. Active-learning dataset
+12. Model fine-tuning and evaluation
+13. Export and dashboard
+
+The repository's downstream congestion-index, emission, MCE, redesign, and SUMO work remains outside the computer-vision subsystem.
+
 ## Main Pipeline
 
 ### 1. Video Input
