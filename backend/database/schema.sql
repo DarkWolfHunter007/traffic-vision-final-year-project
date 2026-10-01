@@ -22,16 +22,25 @@ CREATE TABLE IF NOT EXISTS videos (
 
 CREATE TABLE IF NOT EXISTS processing_runs (
     run_id TEXT PRIMARY KEY,
+    parent_run_id TEXT REFERENCES processing_runs(run_id),
     video_id TEXT NOT NULL REFERENCES videos(video_id),
-    model_version TEXT,
+    model_version TEXT REFERENCES model_versions(model_version),
     config_hash TEXT NOT NULL,
+    config_json TEXT NOT NULL,
     schema_version TEXT NOT NULL,
-    code_version TEXT,
+    code_version TEXT NOT NULL,
     source_video_sha256 TEXT NOT NULL,
     started_at TEXT NOT NULL,
     completed_at TEXT,
-    status TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('created', 'running', 'completed', 'failed', 'cancelled')),
     notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS video_frames (
+    video_id TEXT NOT NULL REFERENCES videos(video_id),
+    frame_number INTEGER NOT NULL,
+    pts_s REAL NOT NULL,
+    PRIMARY KEY (video_id, frame_number)
 );
 
 CREATE TABLE IF NOT EXISTS detections (
@@ -70,7 +79,8 @@ CREATE TABLE IF NOT EXISTS tracks (
     ground_y REAL,
     world_x REAL,
     world_y REAL,
-    trajectory_status TEXT NOT NULL DEFAULT 'complete'
+    calibration_id TEXT REFERENCES calibration_runs(calibration_id),
+    trajectory_status TEXT NOT NULL DEFAULT 'complete' CHECK (trajectory_status IN ('active', 'complete', 'fragmented', 'invalid'))
 );
 
 CREATE TABLE IF NOT EXISTS counting_lines (
@@ -80,7 +90,8 @@ CREATE TABLE IF NOT EXISTS counting_lines (
     approach TEXT,
     geometry_json TEXT NOT NULL,
     bidirectional INTEGER NOT NULL DEFAULT 0,
-    config_version TEXT NOT NULL
+    config_version TEXT NOT NULL,
+    geometry_sha256 TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS zones (
@@ -90,7 +101,8 @@ CREATE TABLE IF NOT EXISTS zones (
     zone_type TEXT NOT NULL,
     approach TEXT,
     geometry_json TEXT NOT NULL,
-    config_version TEXT NOT NULL
+    config_version TEXT NOT NULL,
+    geometry_sha256 TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS crossing_events (
@@ -104,7 +116,8 @@ CREATE TABLE IF NOT EXISTS crossing_events (
     vehicle_class TEXT,
     direction TEXT,
     approach TEXT,
-    movement TEXT
+    movement TEXT,
+    line_config_version TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS traffic_volume_bins (
@@ -154,7 +167,8 @@ CREATE TABLE IF NOT EXISTS speed_observations (
     timestamp_s REAL NOT NULL,
     speed_mps REAL,
     speed_kmh REAL,
-    status TEXT NOT NULL,
+    calibration_id TEXT NOT NULL REFERENCES calibration_runs(calibration_id),
+    status TEXT NOT NULL CHECK (status IN ('valid', 'invalid', 'unavailable')),
     smoothing_window REAL,
     ground_point_method TEXT NOT NULL DEFAULT 'bottom_center'
 );
@@ -168,7 +182,7 @@ CREATE TABLE IF NOT EXISTS stop_events (
     end_timestamp_s REAL,
     duration_s REAL,
     threshold_kmh REAL NOT NULL,
-    status TEXT NOT NULL
+    status TEXT NOT NULL CHECK (status IN ('valid', 'invalid', 'unavailable'))
 );
 
 CREATE TABLE IF NOT EXISTS queue_events (
@@ -180,7 +194,7 @@ CREATE TABLE IF NOT EXISTS queue_events (
     timestamp_s REAL NOT NULL,
     queue_length_m REAL,
     queued_vehicle_count INTEGER,
-    status TEXT NOT NULL
+    status TEXT NOT NULL CHECK (status IN ('valid', 'invalid', 'unavailable'))
 );
 
 CREATE TABLE IF NOT EXISTS manual_reviews (
@@ -196,7 +210,10 @@ CREATE TABLE IF NOT EXISTS manual_reviews (
     original_bbox_json TEXT,
     corrected_bbox_json TEXT,
     reason TEXT NOT NULL,
-    review_status TEXT NOT NULL
+    review_status TEXT NOT NULL CHECK (review_status IN ('pending', 'approved', 'rejected')),
+    reviewer TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL,
+    snippet_path TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ground_truth_sets (
@@ -223,7 +240,7 @@ CREATE TABLE IF NOT EXISTS model_versions (
     sha256 TEXT NOT NULL,
     dataset_version TEXT,
     created_at TEXT NOT NULL,
-    selected_for_production INTEGER NOT NULL DEFAULT 0,
+    selected_for_production INTEGER NOT NULL DEFAULT 0 CHECK (selected_for_production IN (0, 1)),
     metrics_json TEXT
 );
 
@@ -232,3 +249,7 @@ CREATE INDEX IF NOT EXISTS idx_tracks_run_track ON tracks(run_id, track_id);
 CREATE INDEX IF NOT EXISTS idx_crossings_run_time ON crossing_events(run_id, timestamp_s);
 CREATE INDEX IF NOT EXISTS idx_queue_run_time ON queue_events(run_id, timestamp_s);
 CREATE INDEX IF NOT EXISTS idx_reviews_run ON manual_reviews(run_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_one_production_model
+ON model_versions(selected_for_production)
+WHERE selected_for_production = 1;
