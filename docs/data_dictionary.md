@@ -27,7 +27,7 @@ Every processing run records:
 - model version
 - configuration SHA-256
 - schema version
-- code version where available
+- required Git code version SHA
 - start/end time
 - status
 
