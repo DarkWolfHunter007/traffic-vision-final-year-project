@@ -80,7 +80,8 @@ CREATE TABLE IF NOT EXISTS tracks (
     world_x REAL,
     world_y REAL,
     calibration_id TEXT REFERENCES calibration_runs(calibration_id),
-    trajectory_status TEXT NOT NULL DEFAULT 'complete' CHECK (trajectory_status IN ('active', 'complete', 'fragmented', 'invalid'))
+    trajectory_status TEXT NOT NULL DEFAULT 'complete' CHECK (trajectory_status IN ('active', 'complete', 'fragmented', 'invalid')),
+    CHECK ((world_x IS NULL AND world_y IS NULL) OR calibration_id IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS counting_lines (
