@@ -70,22 +70,24 @@ A processing run represents one reproducible execution of a video with a specifi
 
 Every run records:
 - source video SHA-256
-- model version
+- optional parent run ID
+- model version when applicable
+- complete configuration JSON snapshot
 - configuration SHA-256
 - schema version
-- code version where available
+- required Git code version SHA
 - start/end time
-- status
+- constrained status
 
-Changing thresholds, frame selection, model weights, calibration, or relevant configuration requires a new `run_id`. Results from different runs must never be mixed.
+Changing thresholds, frame selection, model weights, calibration, or relevant configuration creates a new run. A downstream-only run must use `parent_run_id` to reference reusable upstream results rather than forcing detection/tracking to run again. Results from different runs must never be mixed.
 
-The `videos` table stores the source SHA-256.
+The `videos` table stores the source SHA-256. `processing_runs` stores the exact configuration snapshot, configuration hash, required Git code SHA, and lineage through `parent_run_id`.
 
 ## 6. Time and video handling
 
 Timestamps are authoritative for elapsed time. Do not use `frame_number / FPS` as the sole timestamp source.
 
-Phase 01 must preserve media timestamps where available, detect/flag variable-frame-rate video, and record wall-clock start time where available. OpenCV frame seeking must not be treated as inherently frame-exact for VFR DVR footage.
+Phase 01 must preserve media timestamps where available in the canonical `video_frames(video_id, frame_number, pts_s)` table, detect/flag variable-frame-rate video, and record wall-clock start time where available. Downstream phases must use those timestamps rather than reconstructing time from frame number and nominal FPS. OpenCV frame seeking must not be treated as inherently frame-exact for VFR DVR footage.
 
 Frame skipping is an inference/performance choice and must not redefine elapsed time.
 
@@ -227,7 +229,21 @@ Do not implement:
 - intersection redesign generation
 - SUMO simulation
 
-## 22. Development order
+## 22. Phase gates
+
+Only the following contracts are mandatory before Phase 01: run lineage and configuration snapshot, authoritative per-frame timestamps, database-enforced statuses/foreign keys, streaming video handling, and ownership of the minimal API/frontend skeleton. Later prompt changes are phase-gated and should be made immediately before the phase that consumes them rather than pulled into Phase 01 prematurely.
+
+The following gates are mandatory before their consuming phases:
+- Phase 02: rectangular crop configuration plus CPU fallback and GPU OOM behavior.
+- Phases 03/12: tracking quality proxies in Phase 03 and MOT-format ID-switch evaluation in Phase 12.
+- Phase 06: `video_segments`, ground-truth tables, and frozen acceptance criteria.
+- Phase 10: reviewer, review time, and snippet-path fields for manual review.
+- Phase 13: frozen export contract, with required fields defined before Phase 08 so upstream data capture can support it.
+- Phase 09: explicit signal-phase scope decision before implementation.
+
+Ground-truth preparation is a parallel research activity, not a prompt dependency: begin recording and hand-counting 2–3 short clips while Phase 01 is implemented.
+
+## 23. Development order
 
 01 Video input/playback and foundational scaffolding
 02 YOLO detection
