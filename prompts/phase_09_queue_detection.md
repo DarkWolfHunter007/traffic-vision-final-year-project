@@ -1,35 +1,48 @@
-# Phase 09 — Queue and Stopped-Vehicle Detection
+# Phase 09 - Stopped Vehicle and Queue Detection
 
 ## Objective
-Implement only the queue and stopped-vehicle detection stage of Traffic Vision, building on completed earlier phases.
+Implement only stopped/slow states and calibrated queue observations. This prompt is independently executable after the stated dependencies are complete.
+
+## Master sections implemented
+stopped/slow states and calibrated queue observations
+
+## Boundary
+Implement nothing except this phase. Do not silently implement later-phase functionality.
+Use backend/database/schema.sql and docs/data_dictionary.md as the canonical data contract.
+Every derived/result row must retain run_id and relevant source video/frame/timestamp provenance.
 
 ## Scope
-- Implement: queue-region/stop-line configuration, configurable speed and duration thresholds, stopped-vehicle detection, and calibrated queue-length estimation.
-- Preserve existing module boundaries and source-data traceability.
-- Keep configuration explicit and reproducible.
-- Add appropriate tests and documentation for this phase.
+- Configure queue zones and stop-line relationships.
+- Detect stopped/slow states using speed threshold and minimum duration.
+- Calculate queue length from calibrated world coordinates.
+- Preserve queued vehicle counts and explicit status.
+- Use queue_length_m as the canonical field.
 
-## Requirements
-- Follow the master prompt in prompts/master_prompt.md.
-- Do not fabricate unavailable measurements or silently discard failures.
-- Preserve source video, frame, timestamp, vehicle/track identity, and configuration metadata wherever applicable.
-- Keep research assumptions configurable rather than hidden in code.
+## Inputs and dependencies
+Phase 08 speed and Phase 07 accepted calibration.
 
-## Explicit Exclusions
-Do not implement: final congestion index, emission calculations, redesign, MCE, and SUMO.
-Do not silently pull functionality from later phases into this phase.
+## Configuration
+Speed threshold, minimum stop duration, queue-zone ID, stop-line relationship, and aggregation interval.
 
-## Deliverables
-- Phase implementation.
-- Required configuration/schema changes.
-- Tests for critical behaviour.
-- Documentation/update notes.
+## Data and metadata
+Use canonical field names. Preserve source video identity, source SHA-256, processing run, model/configuration provenance, and authoritative timestamps where applicable.
+Queue length must never silently fall back to pixel distance.
 
-## Completion Criteria
-Queue observations are reproducible from tracked, calibrated vehicle data using documented thresholds.
+## Error handling
+Reject or explicitly mark invalid inputs and failed processing. Do not silently drop records, invent measurements, or replace unavailable research values with zero.
 
-## Dependencies
-Complete the preceding phases in order. If a dependency is missing or inconsistent, document it rather than bypassing it.
+## Tests and evidence
+Add focused tests for this phase, run them, and report the raw commands/results in the handoff. Test fixtures may be synthetic but must be labelled as software fixtures.
 
-## Independent Review
+## Handoff
+Create docs/handoffs/phase_09/HANDOFF.md containing changed files, interfaces, schema changes, config keys/defaults, input/output contracts, raw test results, assumptions, limitations, unresolved issues, and dependencies for the next phase.
+
+## Completion criteria
+Tests cover threshold boundaries, duration accumulation, queue ordering, world-coordinate distance, and invalid/unavailable cases.
+
+## Explicit exclusions
+Final congestion index, emissions, MCE, redesign, SUMO, model training, dashboard.
+
+## Independent review
 Do not perform the final checks or acceptance review in this task. Prompt checking, implementation review, testing review, and completion verification will be performed separately by Pro subagents that are different from the normal implementation model.
+Run your own phase tests and report raw output, but do not declare the phase accepted.

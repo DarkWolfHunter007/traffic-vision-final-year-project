@@ -1,35 +1,48 @@
-# Phase 13 — Export and Research Dashboard
+# Phase 13 - Export and Research Dashboard
 
 ## Objective
-Implement only the export and research dashboard stage of Traffic Vision, building on completed earlier phases.
+Implement only traceable CSV/JSON/SQLite export and status-aware research dashboard. This prompt is independently executable after the stated dependencies are complete.
+
+## Master sections implemented
+traceable CSV/JSON/SQLite export and status-aware research dashboard
+
+## Boundary
+Implement nothing except this phase. Do not silently implement later-phase functionality.
+Use backend/database/schema.sql and docs/data_dictionary.md as the canonical data contract.
+Every derived/result row must retain run_id and relevant source video/frame/timestamp provenance.
 
 ## Scope
-- Implement: CSV/JSON/SQLite exports, traceable summary statistics, video metadata, counts, class distributions, speed/queue summaries, tracking quality, and review status.
-- Preserve existing module boundaries and source-data traceability.
-- Keep configuration explicit and reproducible.
-- Add appropriate tests and documentation for this phase.
+- Export raw and summary data in CSV, JSON, and SQLite-compatible forms.
+- Retain run/video/model/config provenance.
+- Produce 15-minute and observed-period summaries.
+- Display validation status, tracking quality, review status, speed/queue summaries, and video metadata.
+- Distinguish valid, invalid, unavailable, and unvalidated values.
 
-## Requirements
-- Follow the master prompt in prompts/master_prompt.md.
-- Do not fabricate unavailable measurements or silently discard failures.
-- Preserve source video, frame, timestamp, vehicle/track identity, and configuration metadata wherever applicable.
-- Keep research assumptions configurable rather than hidden in code.
+## Inputs and dependencies
+All earlier phases and their HANDOFF files.
 
-## Explicit Exclusions
-Do not implement: downstream congestion, emission, MCE, and SUMO calculations.
-Do not silently pull functionality from later phases into this phase.
+## Configuration
+Export paths/formats, selected run, summary interval, and dashboard display settings.
 
-## Deliverables
-- Phase implementation.
-- Required configuration/schema changes.
-- Tests for critical behaviour.
-- Documentation/update notes.
+## Data and metadata
+Use canonical field names. Preserve source video identity, source SHA-256, processing run, model/configuration provenance, and authoritative timestamps where applicable.
+The dashboard is a research interface, not an acceptance engine.
 
-## Completion Criteria
-A completed video analysis can be exported into structured data suitable for downstream research.
+## Error handling
+Reject or explicitly mark invalid inputs and failed processing. Do not silently drop records, invent measurements, or replace unavailable research values with zero.
 
-## Dependencies
-Complete the preceding phases in order. If a dependency is missing or inconsistent, document it rather than bypassing it.
+## Tests and evidence
+Add focused tests for this phase, run them, and report the raw commands/results in the handoff. Test fixtures may be synthetic but must be labelled as software fixtures.
 
-## Independent Review
+## Handoff
+Create docs/handoffs/phase_13/HANDOFF.md containing changed files, interfaces, schema changes, config keys/defaults, input/output contracts, raw test results, assumptions, limitations, unresolved issues, and dependencies for the next phase.
+
+## Completion criteria
+Tests cover deterministic exports, provenance retention, summary calculations, invalid/unavailable rendering, and correct run selection.
+
+## Explicit exclusions
+New CV algorithms, downstream congestion/emission/MCE/SUMO calculations, silent historical repair.
+
+## Independent review
 Do not perform the final checks or acceptance review in this task. Prompt checking, implementation review, testing review, and completion verification will be performed separately by Pro subagents that are different from the normal implementation model.
+Run your own phase tests and report raw output, but do not declare the phase accepted.

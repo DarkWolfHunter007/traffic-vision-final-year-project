@@ -1,35 +1,49 @@
-# Phase 08 — Speed Estimation
+# Phase 08 - Speed Estimation
 
 ## Objective
-Implement only the speed estimation stage of Traffic Vision, building on completed earlier phases.
+Implement only calibrated world-coordinate speed estimation using authoritative timestamps. This prompt is independently executable after the stated dependencies are complete.
+
+## Master sections implemented
+calibrated world-coordinate speed estimation using authoritative timestamps
+
+## Boundary
+Implement nothing except this phase. Do not silently implement later-phase functionality.
+Use backend/database/schema.sql and docs/data_dictionary.md as the canonical data contract.
+Every derived/result row must retain run_id and relevant source video/frame/timestamp provenance.
 
 ## Scope
-- Implement: world-coordinate distance, elapsed-time calculation, m/s-to-km/h conversion, smoothing, reliability flags, and persisted speed observations.
-- Preserve existing module boundaries and source-data traceability.
-- Keep configuration explicit and reproducible.
-- Add appropriate tests and documentation for this phase.
+- Transform bottom-centre trajectory points through an accepted calibration.
+- Compute distance over elapsed media time.
+- Convert m/s to km/h.
+- Apply configurable smoothing and validity rules.
+- Mark insufficient/noisy/unavailable values explicitly.
+- Preserve calibration and run provenance.
 
-## Requirements
-- Follow the master prompt in prompts/master_prompt.md.
-- Do not fabricate unavailable measurements or silently discard failures.
-- Preserve source video, frame, timestamp, vehicle/track identity, and configuration metadata wherever applicable.
-- Keep research assumptions configurable rather than hidden in code.
+## Inputs and dependencies
+Accepted Phase 07 calibration and Phase 04 trajectory/timestamp contract.
 
-## Explicit Exclusions
-Do not implement: queue classification, manual review, active learning, emissions, and SUMO.
-Do not silently pull functionality from later phases into this phase.
+## Configuration
+Smoothing window, minimum distance/time separation, outlier handling, and validity thresholds.
 
-## Deliverables
-- Phase implementation.
-- Required configuration/schema changes.
-- Tests for critical behaviour.
-- Documentation/update notes.
+## Data and metadata
+Use canonical field names. Preserve source video identity, source SHA-256, processing run, model/configuration provenance, and authoritative timestamps where applicable.
+Never fall back to nominal FPS when authoritative timestamps are available.
 
-## Completion Criteria
-A calibrated trajectory produces traceable speed observations and invalid cases are explicitly marked.
+## Error handling
+Reject or explicitly mark invalid inputs and failed processing. Do not silently drop records, invent measurements, or replace unavailable research values with zero.
 
-## Dependencies
-Complete the preceding phases in order. If a dependency is missing or inconsistent, document it rather than bypassing it.
+## Tests and evidence
+Add focused tests for this phase, run them, and report the raw commands/results in the handoff. Test fixtures may be synthetic but must be labelled as software fixtures.
 
-## Independent Review
+## Handoff
+Create docs/handoffs/phase_08/HANDOFF.md containing changed files, interfaces, schema changes, config keys/defaults, input/output contracts, raw test results, assumptions, limitations, unresolved issues, and dependencies for the next phase.
+
+## Completion criteria
+Tests cover distance/time, units, smoothing, timestamp gaps, invalid calibration, and unavailable statuses. Accuracy against reference speeds is a later validation activity.
+
+## Explicit exclusions
+Queue, review, active learning, training, emissions, MCE, redesign, SUMO.
+
+## Independent review
 Do not perform the final checks or acceptance review in this task. Prompt checking, implementation review, testing review, and completion verification will be performed separately by Pro subagents that are different from the normal implementation model.
+Run your own phase tests and report raw output, but do not declare the phase accepted.

@@ -1,1297 +1,246 @@
-# Build a YOLO-Based Traffic Data Collection & Vehicle Tracking Application
+# Traffic Vision — Master Reference Specification
 
-## 1. Project Context
+## Instruction to the implementation model
 
-I am working on a final-year Civil Engineering project based on traffic and emission analysis at **Pattom Intersection, Thiruvananthapuram, Kerala, India**.
+**Implement nothing except the phase you are given.**
 
-The overall research pipeline is:
+This file is the authoritative project context and architecture reference. It is not a request to implement the whole application. When executing a phase prompt, use this document only to understand shared requirements and interfaces, then implement only the explicitly assigned phase.
 
-Traffic CCTV Video
-→ YOLO Vehicle Detection
-→ Vehicle Tracking
-→ Traffic Data Extraction
-→ Congestion Analysis
-→ Emission Estimation
-→ Intersection Redesign
-→ MCE
-→ SUMO Validation
+Independent prompt checking, implementation review, testing review, and completion verification are performed by separate Pro subagents. The implementation model must run its own phase tests and report raw results, but must not declare the phase accepted.
 
-Your task is to build ONLY the **computer-vision/data-collection subsystem**.
+## 1. Project context
 
-The application must take recorded CCTV traffic footage as input and produce a structured dataset containing vehicle detections, classifications, trajectories, counts, speeds, queue-related information, and timestamps.
+Traffic Vision is an offline computer-vision/data-collection subsystem for a final-year Civil Engineering study of Pattom Intersection, Thiruvananthapuram, Kerala.
 
-This is an **offline video-analysis application**, NOT a real-time surveillance system. Accuracy and traceability are more important than achieving real-time FPS.
+Research pipeline:
 
----
-
-# 2. Primary Objectives
-
-Build an application that can:
-
-1. Upload/select a traffic video.
-2. Display the video.
-3. Run YOLO vehicle detection.
-4. Track detected vehicles using ByteTrack.
-5. Assign persistent IDs to vehicles.
-6. Display bounding boxes, class names, confidence scores and IDs.
-7. Allow the user to define Regions of Interest (ROI).
-8. Allow the user to define virtual counting lines.
-9. Count vehicles crossing each line without double-counting.
-10. Allow real-world calibration using manually measured reference points.
-11. Transform image coordinates into approximate real-world coordinates.
-12. Estimate vehicle speed from trajectory data.
-13. Identify stopped/slow vehicles.
-14. Estimate queue length based on configurable rules.
-15. Store all vehicle-level observations in structured CSV/JSON/SQLite format.
-16. Flag uncertain detections for manual review.
-17. Generate short video snippets around uncertain events.
-18. Allow manual correction of flagged detections.
-19. Store corrections separately as training data.
-20. Provide a mechanism for periodically fine-tuning the YOLO model using corrected samples.
-21. Provide useful visualizations and summary statistics.
-22. Export the complete processed dataset.
-
-Do NOT implement the congestion index, emission calculation, MCE or SUMO in this version.
-
----
-
-# 3. Recommended Technology Stack
-
-Use a Python-based architecture.
-
-Preferred stack:
-
-* Python 3.12
-* Ultralytics YOLO
-* OpenCV
-* ByteTrack
-* NumPy
-* Pandas
-* PyTorch
-* SQLite for metadata/results
-* FastAPI for backend APIs
-* React + TypeScript for frontend
-* Tailwind CSS for UI
-* FFmpeg where required for video processing
-
-Keep the architecture modular so components can later be replaced.
-
-The YOLO model should NOT be hardcoded to one model version. Make the model path configurable.
-
-Example:
-
-`models/best.pt`
-
-The application should also support a pretrained Ultralytics model initially for testing.
-
----
-
-# 4. High-Level Architecture
-
-Implement:
-
-```text
-                    CCTV VIDEO
-                         │
-                         ▼
-                Video Ingestion
-                         │
-                         ▼
-              Video Preprocessing
-                         │
-                         ▼
-                 YOLO Detection
-                         │
-                         ▼
-                   ByteTrack
-                         │
-                         ▼
-               Vehicle Trajectories
-                         │
-          ┌──────────────┼──────────────┐
-          ▼              ▼              ▼
-    Counting Lines     Speed          Queue
-          │           Estimation     Detection
-          └──────────────┼──────────────┘
-                         ▼
-                 Traffic Dataset
-                         │
-                ┌────────┴────────┐
-                ▼                 ▼
-          Confidence         Manual Review
-           Analysis                │
-                │                  ▼
-                │             Corrections
-                │                  │
-                └────────┬─────────┘
-                         ▼
-                 Training Dataset
-                         │
-                         ▼
-                  Model Fine-tuning
+```
+CCTV → Detection → Tracking → Vehicle-level traffic data
+     → downstream congestion/emission analysis → redesign/MCE/SUMO
 ```
 
----
+This repository stops at reliable, traceable traffic-data extraction. Final congestion methodology, emission modelling, MCE, redesign generation, and SUMO simulation are outside scope.
 
-# 5. Video Input Module
+## 2. Shared technology
 
-Create a video upload/import interface.
+Python 3.12, Ultralytics YOLO, PyTorch, OpenCV, ByteTrack, NumPy, Pandas, SQLite, FastAPI, React/TypeScript/Tailwind, and FFmpeg may be used where required. Dependencies must be introduced only when needed by the assigned phase.
 
-The user should be able to select:
+## 3. Phase ownership
 
-* MP4
-* AVI
-* MOV
-* MKV where supported
+| Phase | Owns | Master sections |
+|---|---|---|
+| 01 | video ingestion, timestamps, preprocessing/scaffolding, config, DB bootstrap, logging | Video Input, Preprocessing, Configuration, Data Integrity |
+| 02 | YOLO inference, tiled inference/merge, class mapping | Detection, Preprocessing |
+| 03 | direct ByteTrack integration, lifecycle, ID-switch instrumentation | Tracking |
+| 04 | trajectory history, ground point, visualization | Tracking, Visualization |
+| 05 | ROI, entry/exit zones, counting-line geometry/configuration | ROI, Counting Lines, Approach/Movement Geometry |
+| 06 | crossing events, movement derivation, ground-truth counting set, 15-minute bins | Counting, Validation |
+| 07 | homography/calibration diagnostics | Calibration |
+| 08 | calibrated speed observations | Speed |
+| 09 | stopped vehicles and queue observations | Queue |
+| 10 | uncertainty review, snippets, class and box correction | Manual Review |
+| 11 | approved correction dataset and leakage-safe splits | Active Learning |
+| 12 | model training/evaluation and tracking/counting validation | Model Improvement, Validation |
+| 13 | exports, research summaries, dashboard | Export, Dashboard |
 
-After loading, display:
+No phase may silently implement another phase's functionality.
 
-* Video resolution
-* FPS
-* Duration
-* Total frames
-* Frame count
-* Current frame number
-* Current timestamp
+## 4. Canonical data contract
 
-The application should NOT load the entire video into memory.
+The source of truth is:
+- `backend/database/schema.sql`
+- `docs/data_dictionary.md`
 
-Process frames sequentially or in controlled batches.
+Do not create alternate field names in phase code or prompts.
 
----
+Important canonical fields include:
+- `video_id`
+- `run_id`
+- `frame_number`
+- `timestamp_s`
+- `queue_length_m`
+- `corrected_class`
+- `corrected_bbox_json`
 
-# 6. Video Preprocessing
+Every derived/result table must carry `run_id`.
 
-Provide configurable options:
+## 5. Provenance
 
-* Frame skip
-* Inference resolution
-* ROI cropping
-* Optional image enhancement
-* Optional frame resizing
-* Optional image tiling/slicing
+A processing run represents one reproducible execution of a video with a specific model/configuration.
 
-Example:
+Every run records:
+- source video SHA-256
+- model version
+- configuration SHA-256
+- schema version
+- code version where available
+- start/end time
+- status
 
-```text
-Original frame
-      ↓
-ROI
-      ↓
-Optional slicing
-      ↓
-YOLO
-```
+Changing thresholds, frame selection, model weights, calibration, or relevant configuration requires a new `run_id`. Results from different runs must never be mixed.
 
-Tiling should support overlap to prevent vehicles near tile boundaries from being missed.
+The `videos` table stores the source SHA-256.
 
-Implement non-maximum suppression/duplicate merging appropriately when tiled inference generates duplicate detections.
+## 6. Time and video handling
 
-Do not force tiling if normal inference is sufficient.
+Timestamps are authoritative for elapsed time. Do not use `frame_number / FPS` as the sole timestamp source.
 
----
+Phase 01 must preserve media timestamps where available, detect/flag variable-frame-rate video, and record wall-clock start time where available. OpenCV frame seeking must not be treated as inherently frame-exact for VFR DVR footage.
 
-# 7. YOLO Detection Module
+Frame skipping is an inference/performance choice and must not redefine elapsed time.
 
-Create a dedicated detection service.
+## 7. Detection and vehicle classes
 
-For every frame:
+YOLO is detection only. The project class mapping is configurable and must be explicit.
 
-```python
-detections = model(frame)
-```
+Do not assume COCO provides every required Kerala vehicle class. Auto-rickshaw support must be represented through the configured model/class mapping rather than invented COCO semantics.
 
-Each detection must contain:
+Detection records retain source frame/timestamp, class, confidence, and full bounding-box geometry.
 
-```text
-frame_number
-timestamp
-class_id
-class_name
-confidence
-x1
-y1
-x2
-y2
-center_x
-center_y
-width
-height
-```
+If tiled inference is enabled, overlapping tile detections must be merged deterministically.
 
-Support configurable confidence threshold.
+## 8. Tracking
 
-Example:
+Tracking is a separate layer after detection.
 
-```text
-confidence_threshold = 0.40
-```
+Phase 03 must feed detections into Ultralytics' ByteTrack implementation directly rather than coupling tracking to `model.track()`, because the pipeline must remain capable of accepting merged/tiled detections.
 
-Make this configurable from the UI.
+Tracker parameters that represent time must be configured in seconds and converted to frame-based internals using the actual processing cadence. A frame-based `track_buffer` must not accidentally scale with frame skipping.
 
-Allow the user to select which vehicle classes are relevant.
+ID switches and incomplete tracks are data-quality events, not reasons to fabricate continuity.
 
-Possible initial classes:
-
-* car
-* motorcycle
-* bus
-* truck
-* bicycle
-* auto-rickshaw
+## 9. Ground point and geometry
 
-Do NOT assume these classes are definitely correct for the final project. Make the class configuration editable.
+For road-surface projection, use the configurable bottom-centre of each vehicle bounding box as the default ground point.
 
----
+Do not use the bounding-box centre as the physical road reference point by default. The box centre is above the road surface, especially for buses and trucks.
 
-# 8. Vehicle Tracking
+Calibration is a planar-road assumption and must document that assumption.
 
-Integrate ByteTrack after YOLO detection.
+## 10. Calibration
 
-Pipeline:
-
-```text
-Frame
- ↓
-YOLO
- ↓
-Detections
- ↓
-ByteTrack
- ↓
-Tracked vehicles
-```
+Use a homography/perspective transformation only when the study geometry supports the flat-road assumption.
 
-Every vehicle should receive a persistent tracking ID.
+Use at least six corresponding reference points. Hold out one or two points for validation rather than fitting and testing on the same points.
 
-Example:
+Report mean and maximum held-out reprojection error in metres and reject calibration above a configured threshold.
 
-```text
-Frame 100 → Car → ID 17
-Frame 101 → Car → ID 17
-Frame 102 → Car → ID 17
-```
+Check/flag wide-angle lens distortion before treating the homography as valid.
 
-Store trajectory history:
+Physical units are unavailable until calibration is accepted.
 
-```text
-track_id
-frame_number
-timestamp
-class
-confidence
-center_x
-center_y
-bbox
-```
+## 11. Approaches, zones, and movements
 
-Handle:
+Phase 05 owns entry and exit zones as well as counting-line configuration.
 
-* Temporary missed detections
-* Occlusion
-* Track creation
-* Track termination
-* ID switches
+A single line crossing cannot by itself determine left/through/right movement. Phase 06 derives movement from the configured entry approach and exit approach/zone trajectory.
 
-Expose tracking configuration parameters where practical.
+Movement may be `left`, `through`, `right`, `u_turn`, or `unknown`.
 
----
+## 12. Counting
 
-# 9. Visualization
+Phase 06 records raw crossing events exactly once per configured line/track/direction according to configuration.
 
-The processed video should support overlays.
+Traffic volume must retain raw events and support:
+- 15-minute bins
+- observed-period counts
+- vehicles/hour extrapolation
 
-Example:
+Acceptance must use a predefined manually counted ground-truth set from 2–3 short clips representing different conditions. The tolerance must be configured before acceptance review.
 
-```text
-┌─────────────────────────────────────┐
-│                                     │
-│       🚗 ID: 17                     │
-│       Car  0.91                     │
-│                                     │
-│          🏍 ID: 21                  │
-│          Motorcycle 0.87            │
-│                                     │
-│────── COUNTING LINE ────────────────│
-│                                     │
-└─────────────────────────────────────┘
-```
+## 13. Speed
 
-Overlay:
+Speed is derived only from accepted calibrated world coordinates and authoritative timestamps.
 
-* Bounding box
-* Vehicle class
-* Confidence
-* Track ID
-* Trajectory
-* ROI
-* Counting lines
-* Calibration points
-* Queue region
+Invalid or insufficient trajectories produce explicit unavailable/invalid statuses, never fabricated values.
 
-Allow each overlay to be toggled on/off.
+## 14. Queue and stopped vehicles
 
----
+Queue classification is configurable using queue zones, the calibrated bottom-centre trajectory, speed threshold, and minimum duration.
 
-# 10. ROI Configuration
+The canonical field is `queue_length_m`.
 
-Create an interface allowing the user to draw polygonal ROIs.
+## 15. Manual review
 
-Example:
+Review preserves the original prediction and stores corrections separately.
 
-```text
-             Intersection
-                  ↓
+A correction may change both class and bounding-box geometry. Review data must retain source video/run/frame/timestamp references.
 
-       ┌────────────────────┐
-       │                    │
-       │       ROI          │
-       │                    │
-       └────────────────────┘
-```
+Other emissions-specific features are explicitly out of scope.
 
-Only detections inside the configured ROI should optionally be processed.
+## 16. Active learning
 
-Allow multiple ROIs.
+Corrected samples become training candidates only after review/approval.
 
-Each ROI should have:
+Train/validation/test splits are performed by source-video or source-segment groups, never by adjacent frames. The initial labelled set must have a documented origin.
 
-```text
-roi_id
-name
-polygon_points
-approach
-movement
-```
+No corrected sample is automatically placed in the test set.
 
-Store configuration in JSON or SQLite.
+## 17. Model improvement
 
----
+Models are versioned. Candidate models are evaluated before selection. The production/active model is never silently replaced by training code.
 
-# 11. Virtual Counting Lines
+Evaluation includes detection metrics where labels exist and traffic/tracking metrics relevant to this project.
 
-Allow the user to draw a line on the video.
+## 18. Validation
 
-Example:
+Validation data must be explicitly identified and traceable.
 
-```text
-         Traffic
-           ↓
-      🚗  🚗  🚗
+Relevant measures include:
+- detection precision/recall/mAP where applicable
+- counting absolute and percentage error
+- speed MAE/RMSE where reference speeds exist
+- queue-length difference where manual reference exists
+- ID switches and track continuity
 
-========================
-       COUNT LINE
+Do not use vague completion language such as "under normal conditions" as the only acceptance criterion.
 
-           ↓
-      Intersection
-```
+## 19. Error handling and scientific integrity
 
-When a tracked vehicle crosses the line:
+Do not fabricate measurements, silently discard failed records, or silently overwrite previous runs.
 
-```text
-track_id = 17
-class = car
-timestamp = 00:03:24
-direction = incoming
-```
+Invalid calibration, missing timestamps, tracking loss, insufficient trajectory length, and other limitations must be represented explicitly and logged.
 
-Record exactly one crossing event for that vehicle per configured counting line unless the user explicitly configures bidirectional counting.
+## 20. Implementation contract
 
-Prevent double-counting.
+Every phase prompt must:
+1. Name the master sections it implements.
+2. State dependencies.
+3. State explicit exclusions.
+4. Reference the canonical schema/data dictionary.
+5. Define required configuration and provenance.
+6. Define measurable completion criteria.
+7. Require a `HANDOFF.md` describing interfaces, schema/config changes, tests/raw output, limitations, and next-phase dependencies.
+8. State the independent-review instruction exactly:
 
-Store:
+> Do not perform the final checks or acceptance review in this task. Prompt checking, implementation review, testing review, and completion verification will be performed separately by Pro subagents that are different from the normal implementation model.
 
-```text
-line_id
-track_id
-vehicle_class
-timestamp
-direction
-frame_number
-```
+The implementation model runs tests relevant to its own work and reports the raw output. It does not declare acceptance.
 
-Calculate:
+## 21. Out of scope
 
-```text
-vehicles per observation period
-vehicles/hour
-```
+Do not implement:
+- final congestion-index methodology
+- emission-factor or pollutant calculations
+- CO2/CO/NOx/PM modelling
+- MCE
+- intersection redesign generation
+- SUMO simulation
 
----
+## 22. Development order
 
-# 12. Approach and Movement Classification
+01 Video input/playback and foundational scaffolding
+02 YOLO detection
+03 ByteTrack
+04 Trajectories/visualization
+05 ROI, entry/exit zones, counting-line configuration
+06 Counting, movement derivation, ground-truth counting set
+07 Calibration
+08 Speed
+09 Queue/stopped vehicles
+10 Manual review
+11 Active-learning dataset
+12 Model training/evaluation
+13 Export/dashboard
 
-Allow the user to assign counting lines and ROIs to approaches.
-
-Example:
-
-```text
-North
-South
-East
-West
-```
-
-Allow configurable movement:
-
-```text
-Left
-Through
-Right
-U-turn
-Unknown
-```
-
-Do not hardcode Pattom's exact movements.
-
-The researcher should configure them through the UI.
-
----
-
-# 13. Camera Calibration
-
-Implement a calibration module.
-
-The user should be able to select known points in the image.
-
-Example:
-
-```text
-Image:
-
-A ●────────────────● B
-       known distance
-          10 m
-```
-
-The user enters the real-world coordinates/distance associated with the points.
-
-Prefer a homography/perspective transformation using multiple corresponding points.
-
-Allow at least four reference points for planar transformation.
-
-Store:
-
-```text
-image_x
-image_y
-world_x
-world_y
-```
-
-Calculate transformation matrix.
-
-The transformed coordinate should be available for every tracked vehicle.
-
-Example:
-
-```text
-pixel:
-(842, 512)
-
-world:
-(14.2m, 7.8m)
-```
-
-Do not assume that a single pixel-to-meter ratio is universally valid across the image.
-
----
-
-# 14. Speed Estimation
-
-Using:
-
-```text
-track_id
-timestamp
-world_x
-world_y
-```
-
-estimate vehicle speed.
-
-Basic:
-
-```text
-distance = sqrt(
-    (x2-x1)^2 +
-    (y2-y1)^2
-)
-
-speed = distance / time
-```
-
-Convert to km/h:
-
-```text
-km/h = m/s × 3.6
-```
-
-Apply smoothing to reduce frame-level noise.
-
-Provide configurable smoothing/window parameters.
-
-Store:
-
-```text
-track_id
-timestamp
-speed_mps
-speed_kmh
-```
-
-Avoid calculating speed when insufficient trajectory information exists.
-
-Flag unreliable estimates instead of generating fake values.
-
----
-
-# 15. Stopped/Slow Vehicle Detection
-
-Create configurable thresholds.
-
-Example:
-
-```text
-STOP_SPEED_THRESHOLD = 2 km/h
-```
-
-If the vehicle remains below the threshold for a configurable duration:
-
-```text
-Vehicle → stopped
-```
-
-Store:
-
-```text
-track_id
-start_time
-end_time
-duration
-location
-```
-
-Do NOT hardcode the final threshold without allowing the researcher to change it.
-
----
-
-# 16. Queue Detection
-
-Create a configurable queue region near each stop line.
-
-A vehicle can be considered queued when:
-
-```text
-vehicle is inside queue ROI
-AND
-vehicle speed < configurable threshold
-AND
-vehicle satisfies minimum stopping duration
-```
-
-Calculate queue length using the calibrated world coordinates.
-
-Example:
-
-```text
-STOP LINE
-│
-│ 🚗
-│ 🚗
-│ 🚗
-│ 🚗 ← furthest queued vehicle
-│
-```
-
-Store:
-
-```text
-approach
-timestamp
-queue_length_m
-number_of_queued_vehicles
-```
-
-Allow the methodology thresholds to be changed through configuration.
-
----
-
-# 17. Signal Phase Annotation
-
-Because the study concerns an intersection, provide an optional mechanism for defining signal phases.
-
-Allow the researcher to enter:
-
-```text
-RED
-GREEN
-AMBER
-```
-
-with timestamps or cycle definitions.
-
-This information can later be used for delay/queue analysis.
-
-Do not attempt to automatically infer signal phases in the first version.
-
----
-
-# 18. Manual Review / Human-in-the-Loop
-
-This is an important feature.
-
-The system should detect uncertain cases.
-
-Examples:
-
-```text
-confidence < threshold
-```
-
-or:
-
-* vehicle classification uncertainty
-* tracking failure
-* severe occlusion
-* unreadable number plate
-* suspicious tracking event
-
-Flag these events.
-
-For every flagged event, automatically generate a short video snippet:
-
-```text
-5 seconds before event
-+
-event
-+
-5 seconds after event
-```
-
-The exact duration should be configurable.
-
-The review UI should show:
-
-```text
-Video snippet
-
-Prediction:
-Class = car
-Confidence = 0.42
-
-[ Car ]
-[ Motorcycle ]
-[ Bus ]
-[ Truck ]
-[ Other ]
-```
-
-The researcher can correct the prediction.
-
-Store:
-
-```text
-original_prediction
-corrected_label
-frame/video reference
-timestamp
-track_id
-```
-
----
-
-# 19. Active Learning Dataset
-
-Corrected samples should be stored in a dedicated dataset:
-
-```text
-dataset/
-    images/
-    labels/
-    metadata/
-```
-
-Maintain a distinction between:
-
-```text
-original training data
-validation data
-new corrected data
-test data
-```
-
-Never automatically put every corrected sample into the test set.
-
-Provide a dataset-management module.
-
----
-
-# 20. Model Improvement Loop
-
-Implement a controlled workflow:
-
-```text
-YOLO inference
-      ↓
-Uncertain samples
-      ↓
-Human correction
-      ↓
-Corrected dataset
-      ↓
-Dataset review
-      ↓
-Fine-tuning
-      ↓
-New model
-      ↓
-Evaluation
-```
-
-Do NOT automatically replace the production model after training.
-
-Instead:
-
-```text
-Model v1
-Model v2
-Model v3
-```
-
-Allow the researcher to compare:
-
-* Precision
-* Recall
-* mAP
-* Confusion matrix
-* Detection count
-* Tracking quality
-
-Then manually select which model becomes active.
-
-This is an **active-learning/human-in-the-loop system**, not reinforcement learning.
-
----
-
-# 21. Data Storage
-
-Use SQLite for application metadata and structured results.
-
-Suggested tables:
-
-### videos
-
-```text
-id
-filename
-path
-fps
-width
-height
-duration
-created_at
-```
-
-### detections
-
-```text
-id
-video_id
-frame_number
-timestamp
-class_id
-class_name
-confidence
-x1
-y1
-x2
-y2
-center_x
-center_y
-```
-
-### tracks
-
-```text
-track_id
-video_id
-frame_number
-timestamp
-class_name
-confidence
-image_x
-image_y
-world_x
-world_y
-speed_kmh
-```
-
-### crossing_events
-
-```text
-id
-video_id
-line_id
-track_id
-timestamp
-direction
-vehicle_class
-```
-
-### queue_events
-
-```text
-id
-video_id
-approach
-timestamp
-queue_length
-queued_vehicle_count
-```
-
-### manual_reviews
-
-```text
-id
-video_id
-track_id
-timestamp
-original_class
-corrected_class
-reason
-review_status
-```
-
----
-
-# 22. Export
-
-Allow export to:
-
-### CSV
-
-```text
-vehicle_id
-timestamp
-vehicle_class
-approach
-movement
-x
-y
-world_x
-world_y
-speed_kmh
-queue_status
-```
-
-### JSON
-
-For complete trajectory information.
-
-### SQLite
-
-For the complete project database.
-
-Also export summary:
-
-```text
-Total vehicles
-Vehicles by class
-Vehicles/hour
-Average speed
-Maximum speed
-Average stopped time
-Maximum queue length
-Average queue length
-```
-
----
-
-# 23. Dashboard
-
-Create a simple research-oriented dashboard.
-
-Display:
-
-```text
-VIDEO
-Duration: 30 min
-FPS: 25
-Resolution: 1920×1080
-
-VEHICLES
-Total detected: 2,481
-Cars: 1,340
-Motorcycles: 820
-Buses: 121
-Trucks: 200
-
-TRAFFIC
-Volume: XXXX veh/h
-Average speed: XX km/h
-Maximum queue: XX m
-Average queue: XX m
-
-TRACKING
-Active tracks: XX
-ID switches: XX
-Low-confidence events: XX
-```
-
-The dashboard should not claim that these numbers are scientifically valid until processing/validation has completed.
-
----
-
-# 24. Error Handling
-
-The application must gracefully handle:
-
-* Corrupted video
-* Unsupported video format
-* Missing YOLO model
-* GPU unavailable
-* Insufficient GPU memory
-* Empty detections
-* Tracking failures
-* Invalid calibration
-* Missing reference points
-* Invalid ROI
-* Invalid counting line
-* OCR failure
-* Missing frames
-
-Do not silently continue with invalid data.
-
-Log errors clearly.
-
----
-
-# 25. Performance Architecture
-
-Because this is offline processing, prioritize accuracy.
-
-Use:
-
-```text
-Video Reader
-      ↓
-Frame Queue
-      ↓
-Preprocessing Worker
-      ↓
-YOLO Inference
-      ↓
-Tracking
-      ↓
-Analytics
-      ↓
-Database Writer
-```
-
-Use multiprocessing/threading only where it actually improves throughput.
-
-Do not create unnecessary complexity.
-
-If GPU is available:
-
-```text
-PyTorch CUDA → YOLO inference
-```
-
-If GPU is unavailable:
-
-```text
-CPU inference
-```
-
-The application must still function.
-
----
-
-# 26. Configuration
-
-Create a central configuration file:
-
-```yaml
-model:
-  path: models/best.pt
-  confidence_threshold: 0.40
-  iou_threshold: 0.50
-  imgsz: 1280
-
-tracking:
-  tracker: bytetrack
-  track_buffer: 30
-
-speed:
-  smoothing_window: 5
-  minimum_distance_m: 2
-
-queue:
-  speed_threshold_kmh: 2
-  minimum_stop_duration_s: 3
-
-review:
-  confidence_threshold: 0.40
-  snippet_before_s: 5
-  snippet_after_s: 5
-```
-
-Make important parameters editable through the UI.
-
----
-
-# 27. Important Scientific Requirements
-
-The application must NOT fabricate measurements.
-
-If calibration is missing:
-
-```text
-Do not report metres or km/h.
-```
-
-If speed cannot be reliably estimated:
-
-```text
-Return unavailable/invalid.
-```
-
-If vehicle fuel type cannot be identified:
-
-```text
-Mark as unknown/manual review.
-```
-
-If tracking is lost:
-
-```text
-Mark trajectory as incomplete.
-```
-
-Every derived measurement should retain enough metadata to trace it back to the original video.
-
-This is important because the application will ultimately be used for academic research.
-
----
-
-# 28. Validation Module
-
-Provide a way to manually enter ground-truth observations for selected video segments.
-
-Example:
-
-```text
-Manual vehicles = 103
-System vehicles = 99
-```
-
-Calculate appropriate comparison metrics.
-
-For detection:
-
-* Precision
-* Recall
-* mAP
-
-For counting:
-
-* Absolute error
-* Percentage error
-
-For speed:
-
-* MAE/RMSE against manually measured/reference speeds where available
-
-For queue:
-
-* Difference between manually measured and system-estimated queue length
-
-For tracking:
-
-* ID switches
-* Track continuity where appropriate
-
-Display these results in the dashboard.
-
----
-
-# 29. Development Strategy
-
-Do NOT attempt to build everything simultaneously.
-
-Build in this order:
-
-### Phase 1
-
-Video upload + video player
-
-### Phase 2
-
-YOLO detection
-
-### Phase 3
-
-ByteTrack
-
-### Phase 4
-
-Bounding boxes + IDs + trajectories
-
-### Phase 5
-
-ROI and virtual counting lines
-
-### Phase 6
-
-Vehicle counting
-
-### Phase 7
-
-Camera calibration
-
-### Phase 8
-
-Speed estimation
-
-### Phase 9
-
-Queue/stopped vehicle detection
-
-### Phase 10
-
-Manual review
-
-### Phase 11
-
-Active-learning dataset
-
-### Phase 12
-
-Model fine-tuning/evaluation
-
-### Phase 13
-
-Export + dashboard
-
-Do not move to the next phase until the previous phase produces verifiable results.
-
----
-
-# 30. Expected Final Output
-
-The final application should allow me to take:
-
-```text
-Pattom_CCTV_01.mp4
-```
-
-and produce:
-
-```text
-Processed video
-        +
-Vehicle detections
-        +
-Persistent tracking IDs
-        +
-Vehicle trajectories
-        +
-Vehicle counts
-        +
-Speed estimates
-        +
-Queue estimates
-        +
-Stopped-time estimates
-        +
-Manual-review samples
-        +
-Corrected training data
-        +
-Validation metrics
-        +
-CSV/JSON/SQLite dataset
-```
-
-The resulting dataset will later be consumed by a separate traffic/emission-analysis module.
-
----
-
-# 31. Critical Design Principle
-
-Keep these layers strictly separated:
-
-```text
-YOLO
-=
-Detection
-
-ByteTrack
-=
-Tracking
-
-Calibration
-=
-Pixel → real-world coordinates
-
-Trajectory engine
-=
-Movement information
-
-Traffic analytics
-=
-Volume / speed / queue / delay
-
-Emission model
-=
-Traffic activity → emissions
-
-SUMO
-=
-Traffic simulation and validation
-```
-
-Do not mix emission calculations into the YOLO code.
-
-The computer-vision application should produce clean, traceable **vehicle-level traffic data** that another module can consume.
-
----
-
-# 32. Deliverables
-
-Generate:
-
-1. Complete source code
-2. Frontend
-3. Backend
-4. Database schema
-5. Configuration system
-6. YOLO inference module
-7. ByteTrack integration
-8. Calibration module
-9. Counting-line module
-10. Speed module
-11. Queue module
-12. Manual-review interface
-13. Active-learning dataset pipeline
-14. Model evaluation module
-15. CSV/JSON export
-16. SQLite database
-17. README
-18. Installation instructions
-19. Example configuration
-20. Test dataset/examples
-21. Unit tests for critical components
-
-Before writing large amounts of code, create the project structure and explain the architecture briefly. Then implement each phase incrementally, keeping the application runnable after every phase.
-
-
----
-
-## Prompt Governance
-
-Implementation prompts are organized under `prompts/`. The master prompt defines the complete system; phase prompts define sequential, bounded implementation tasks. Each phase must preserve the separation between computer vision, traffic analytics, emission modelling, and SUMO.
-
-Independent prompt checking, implementation review, testing review, and completion verification are performed separately by Pro subagents. The implementation model must not claim independent acceptance.
+Keep the application runnable after each phase.
