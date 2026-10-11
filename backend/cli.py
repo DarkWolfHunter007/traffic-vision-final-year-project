@@ -8,6 +8,8 @@ from pathlib import Path
 
 from backend.config import load_config
 from backend.database.connection import bootstrap_database
+from backend.detection import UltralyticsDetector
+from backend.services.detection import run_detection
 from backend.services.ingestion import ingest_video
 from backend.structured_logging import configure_logging
 
@@ -25,6 +27,9 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     ingest.add_argument("--wall-clock-start")
     ingest.add_argument("--parent-run-id")
+    detect = commands.add_parser("detect", help="Run configured detection for an ingested parent run")
+    detect.add_argument("parent_run_id")
+    detect.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
 
 
@@ -37,6 +42,21 @@ def main() -> None:
         database_path = REPOSITORY_ROOT / database_path
     if args.command == "bootstrap-db":
         print(json.dumps({"database_path": str(database_path), "schema_version": bootstrap_database(database_path)}))
+        return
+    if args.command == "detect":
+        model = config["detection"]["model"]
+        if not model["path"]:
+            raise SystemExit("detection.model.path must be configured before detection can run")
+        model_path = Path(model["path"])
+        if not model_path.is_absolute():
+            model_path = REPOSITORY_ROOT / model_path
+        run_id = run_detection(
+            args.parent_run_id,
+            config,
+            REPOSITORY_ROOT,
+            UltralyticsDetector(model_path, model["device"]),
+        )
+        print(json.dumps({"run_id": run_id, "parent_run_id": args.parent_run_id}, sort_keys=True))
         return
     result = ingest_video(
         args.video,

@@ -63,3 +63,28 @@ def insert_frame_batch(connection: sqlite3.Connection, video_id: str, frames: It
 
 def metadata_json(metadata: dict[str, object]) -> str:
     return json.dumps(metadata, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def insert_model_version(connection: sqlite3.Connection, model: dict[str, object]) -> None:
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO model_versions (model_version, model_path, sha256, dataset_version, created_at, metrics_json)
+        VALUES (:model_version, :model_path, :sha256, :dataset_version, :created_at, :metrics_json)
+        """,
+        model,
+    )
+
+
+def insert_detections(connection: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO detections (
+            detection_id, run_id, video_id, frame_number, timestamp_s, class_id, class_name,
+            confidence, x1, y1, x2, y2, ground_x, ground_y, width_px, height_px
+        ) VALUES (
+            :detection_id, :run_id, :video_id, :frame_number, :timestamp_s, :class_id, :class_name,
+            :confidence, :x1, :y1, :x2, :y2, :ground_x, :ground_y, :width_px, :height_px
+        )
+        """,
+        rows,
+    )

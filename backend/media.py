@@ -149,3 +149,17 @@ def preview_frame(path: Path, frame_number: int) -> FramePreview:
     except av.FFmpegError as error:
         raise MediaError(f"Unable to decode video {path}: {error}") from error
     raise MediaError(f"Preview frame {frame_number} does not exist")
+
+
+def iter_decoded_images(path: Path) -> Iterator[tuple[int, float, np.ndarray]]:
+    """Sequentially decode RGB images for a downstream phase without retaining prior frames."""
+    try:
+        with av.open(str(path)) as container:
+            stream = _video_stream(container)
+            for frame_number, frame in enumerate(container.decode(stream)):
+                time_base = frame.time_base or stream.time_base
+                if frame.pts is None or time_base is None:
+                    raise MediaError(f"Frame {frame_number} has no decoder presentation timestamp")
+                yield frame_number, float(frame.pts * time_base), frame.to_ndarray(format="rgb24")
+    except av.FFmpegError as error:
+        raise MediaError(f"Unable to decode video {path}: {error}") from error

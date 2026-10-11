@@ -21,6 +21,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "timestamp": {"strategy": "decoder_pts", "wall_clock_start": None},
     "streaming": {"frame_batch_size": 500, "preview_frame_number": 0},
     "resources": {"policy": "cpu", "gpu_oom_behavior": "not_applicable_phase_01"},
+    "detection": {
+        "model": {"version": None, "path": None, "device": "cpu"},
+        "confidence_threshold": 0.25,
+        "iou_threshold": 0.45,
+        "image_size": 640,
+        "frame_stride": 1,
+        "roi_crop": None,
+        "tiling": {"enabled": False, "width": 640, "height": 640, "overlap": 0.2},
+        "class_mapping": {},
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -61,6 +71,20 @@ def _validate(config: Mapping[str, Any]) -> None:
     strategy = config["timestamp"].get("strategy")
     if strategy != "decoder_pts":
         raise ConfigError("Phase 01 requires timestamp.strategy to be 'decoder_pts'")
+    detection = config.get("detection")
+    if not isinstance(detection, Mapping):
+        raise ConfigError("detection must be a mapping")
+    if not 0 <= detection.get("confidence_threshold", -1) <= 1:
+        raise ConfigError("detection.confidence_threshold must be between zero and one")
+    if not 0 < detection.get("iou_threshold", 0) <= 1:
+        raise ConfigError("detection.iou_threshold must be greater than zero and at most one")
+    if not isinstance(detection.get("frame_stride"), int) or detection["frame_stride"] <= 0:
+        raise ConfigError("detection.frame_stride must be a positive integer")
+    tiling = detection.get("tiling")
+    if not isinstance(tiling, Mapping) or not 0 <= tiling.get("overlap", -1) < 1:
+        raise ConfigError("detection.tiling.overlap must be at least zero and below one")
+    if not isinstance(detection.get("class_mapping"), Mapping):
+        raise ConfigError("detection.class_mapping must be a mapping")
 
 
 def load_config(path: Path | None = None, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:

@@ -19,3 +19,19 @@ resources:
   gpu_oom_behavior: not_applicable_phase_01
 logging:
   level: INFO
+detection:
+  model:
+    version: null
+    path: null
+    device: cpu
+  confidence_threshold: 0.25
+  iou_threshold: 0.45
+  image_size: 640
+  frame_stride: 1
+  roi_crop: null
+  tiling:
+    enabled: false
+    width: 640
+    height: 640
+    overlap: 0.2
+  class_mapping: {}
