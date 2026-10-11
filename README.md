@@ -114,6 +114,27 @@ Key rules:
 [ ] 13 Export + dashboard
 ```
 
+## Current implementation: Phase 01 foundation
+
+The current implementation branch establishes only the Phase 01 foundation: canonical SQLite bootstrap, per-connection foreign-key enforcement, deterministic configuration hashing, source-file SHA-256 provenance, streaming decoder-PTS ingestion, and minimal health/UI wiring. It does not implement detection, tracking, geometry, counting, calibration, speed, queues, model training, or a dashboard.
+
+Use Python 3.12 with [uv](https://docs.astral.sh/uv/) from the repository root:
+
+```text
+uv sync --python 3.12 --group dev
+uv run pytest
+uv run traffic-vision bootstrap-db
+uv run uvicorn backend.app:app
+```
+
+To ingest a supported recorded video after it has been explicitly placed in scope:
+
+```text
+uv run traffic-vision ingest path/to/video.mp4 --wall-clock-start 2026-10-11T09:00:00+05:30
+```
+
+The ingest command stores only source metadata, a SHA-256 fingerprint, decoder PTS mapping, and run provenance. Complete the site/footage questionnaire before using any future analytics phase.
+
 ## Repository structure
 
 ```text

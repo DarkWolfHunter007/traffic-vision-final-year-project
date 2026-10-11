@@ -1,0 +1,21 @@
+paths:
+  raw_root: data/raw
+  processed_root: data/processed
+  database_path: data/processed/traffic_vision.sqlite3
+input:
+  supported_formats:
+    - .avi
+    - .mkv
+    - .mov
+    - .mp4
+timestamp:
+  strategy: decoder_pts
+  wall_clock_start: null
+streaming:
+  frame_batch_size: 500
+  preview_frame_number: 0
+resources:
+  policy: cpu
+  gpu_oom_behavior: not_applicable_phase_01
+logging:
+  level: INFO
