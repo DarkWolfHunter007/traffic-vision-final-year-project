@@ -31,6 +31,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "tiling": {"enabled": False, "width": 640, "height": 640, "overlap": 0.2},
         "class_mapping": {},
     },
+    "tracking": {
+        "tracker_type": "bytetrack",
+        "track_high_thresh": 0.5,
+        "track_low_thresh": 0.1,
+        "new_track_thresh": 0.6,
+        "match_thresh": 0.8,
+        "track_buffer_seconds": 1.0,
+        "fuse_score": True,
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -85,6 +94,23 @@ def _validate(config: Mapping[str, Any]) -> None:
         raise ConfigError("detection.tiling.overlap must be at least zero and below one")
     if not isinstance(detection.get("class_mapping"), Mapping):
         raise ConfigError("detection.class_mapping must be a mapping")
+    tracking = config.get("tracking")
+    if tracking is not None:
+        if not isinstance(tracking, Mapping):
+            raise ConfigError("tracking must be a mapping")
+        if tracking.get("tracker_type") != "bytetrack":
+            raise ConfigError("Phase 03 requires tracking.tracker_type to be 'bytetrack'")
+        if not 0 <= tracking.get("track_high_thresh", -1) <= 1:
+            raise ConfigError("tracking.track_high_thresh must be between zero and one")
+        if not 0 <= tracking.get("track_low_thresh", -1) <= 1:
+            raise ConfigError("tracking.track_low_thresh must be between zero and one")
+        if not 0 <= tracking.get("new_track_thresh", -1) <= 1:
+            raise ConfigError("tracking.new_track_thresh must be between zero and one")
+        if not 0 <= tracking.get("match_thresh", -1) <= 1:
+            raise ConfigError("tracking.match_thresh must be between zero and one")
+        buffer_seconds = tracking.get("track_buffer_seconds")
+        if not (isinstance(buffer_seconds, (int, float)) and buffer_seconds > 0):
+            raise ConfigError("tracking.track_buffer_seconds must be a positive number")
 
 
 def load_config(path: Path | None = None, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:

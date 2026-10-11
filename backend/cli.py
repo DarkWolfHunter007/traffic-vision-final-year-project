@@ -11,6 +11,7 @@ from backend.database.connection import bootstrap_database
 from backend.detection import UltralyticsDetector
 from backend.services.detection import run_detection
 from backend.services.ingestion import ingest_video
+from backend.services.tracking import run_tracking
 from backend.structured_logging import configure_logging
 
 
@@ -30,7 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
     detect = commands.add_parser("detect", help="Run configured detection for an ingested parent run")
     detect.add_argument("parent_run_id")
     detect.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    track = commands.add_parser("track", help="Run configured ByteTrack tracking for a detection parent run")
+    track.add_argument("parent_run_id")
+    track.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
+
 
 
 def main() -> None:
@@ -56,6 +61,10 @@ def main() -> None:
             REPOSITORY_ROOT,
             UltralyticsDetector(model_path, model["device"]),
         )
+        print(json.dumps({"run_id": run_id, "parent_run_id": args.parent_run_id}, sort_keys=True))
+        return
+    if args.command == "track":
+        run_id = run_tracking(args.parent_run_id, config, REPOSITORY_ROOT)
         print(json.dumps({"run_id": run_id, "parent_run_id": args.parent_run_id}, sort_keys=True))
         return
     result = ingest_video(

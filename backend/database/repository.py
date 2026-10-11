@@ -88,3 +88,34 @@ def insert_detections(connection: sqlite3.Connection, rows: Iterable[dict[str, o
         """,
         rows,
     )
+
+
+def insert_tracks(connection: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO tracks (
+            track_observation_id, run_id, video_id, track_id, frame_number, timestamp_s,
+            vehicle_class, confidence, x1, y1, x2, y2, ground_x, ground_y,
+            world_x, world_y, calibration_id, trajectory_status
+        ) VALUES (
+            :track_observation_id, :run_id, :video_id, :track_id, :frame_number, :timestamp_s,
+            :vehicle_class, :confidence, :x1, :y1, :x2, :y2, :ground_x, :ground_y,
+            :world_x, :world_y, :calibration_id, :trajectory_status
+        )
+        """,
+        rows,
+    )
+
+
+def fetch_detections_for_tracking(connection: sqlite3.Connection, run_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT detection_id, run_id, video_id, frame_number, timestamp_s,
+               class_id, class_name, confidence, x1, y1, x2, y2, ground_x, ground_y
+        FROM detections
+        WHERE run_id = ?
+        ORDER BY frame_number ASC, confidence DESC
+        """,
+        (run_id,),
+    ).fetchall()
+
