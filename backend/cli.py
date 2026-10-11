@@ -12,6 +12,10 @@ from backend.detection import UltralyticsDetector
 from backend.services.detection import run_detection
 from backend.services.ingestion import ingest_video
 from backend.services.tracking import run_tracking
+from backend.services.visualization import (
+    render_preview_visualization,
+    render_video_visualization,
+)
 from backend.structured_logging import configure_logging
 
 
@@ -34,6 +38,13 @@ def build_parser() -> argparse.ArgumentParser:
     track = commands.add_parser("track", help="Run configured ByteTrack tracking for a detection parent run")
     track.add_argument("parent_run_id")
     track.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    visualize = commands.add_parser("visualize", help="Render trajectory visualization for a tracking parent run")
+    visualize.add_argument("parent_run_id")
+    visualize.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    visualize.add_argument("--output", type=Path, default=None)
+    visualize.add_argument("--preview-frame", type=int, default=None)
+    visualize.add_argument("--start-frame", type=int, default=None)
+    visualize.add_argument("--end-frame", type=int, default=None)
     return parser
 
 
@@ -65,6 +76,36 @@ def main() -> None:
         return
     if args.command == "track":
         run_id = run_tracking(args.parent_run_id, config, REPOSITORY_ROOT)
+        print(json.dumps({"run_id": run_id, "parent_run_id": args.parent_run_id}, sort_keys=True))
+        return
+    if args.command == "visualize":
+        if args.preview_frame is not None:
+            output_path = render_preview_visualization(
+                args.parent_run_id,
+                args.preview_frame,
+                config,
+                REPOSITORY_ROOT,
+                output_path=args.output,
+            )
+            print(
+                json.dumps(
+                    {
+                        "parent_run_id": args.parent_run_id,
+                        "preview_frame": args.preview_frame,
+                        "output_path": str(output_path),
+                    },
+                    sort_keys=True,
+                )
+            )
+            return
+        run_id = render_video_visualization(
+            args.parent_run_id,
+            config,
+            REPOSITORY_ROOT,
+            output_path=args.output,
+            start_frame=args.start_frame,
+            end_frame=args.end_frame,
+        )
         print(json.dumps({"run_id": run_id, "parent_run_id": args.parent_run_id}, sort_keys=True))
         return
     result = ingest_video(

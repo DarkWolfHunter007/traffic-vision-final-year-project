@@ -119,3 +119,44 @@ def fetch_detections_for_tracking(connection: sqlite3.Connection, run_id: str) -
         (run_id,),
     ).fetchall()
 
+
+def fetch_tracks_for_run(connection: sqlite3.Connection, run_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT track_observation_id, run_id, video_id, track_id, frame_number, timestamp_s,
+               vehicle_class, confidence, x1, y1, x2, y2, ground_x, ground_y,
+               world_x, world_y, calibration_id, trajectory_status
+        FROM tracks
+        WHERE run_id = ?
+        ORDER BY track_id ASC, frame_number ASC, timestamp_s ASC
+        """,
+        (run_id,),
+    ).fetchall()
+
+
+def fetch_tracks_for_frame(connection: sqlite3.Connection, run_id: str, frame_number: int) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT track_observation_id, run_id, video_id, track_id, frame_number, timestamp_s,
+               vehicle_class, confidence, x1, y1, x2, y2, ground_x, ground_y,
+               world_x, world_y, calibration_id, trajectory_status
+        FROM tracks
+        WHERE run_id = ? AND frame_number = ?
+        ORDER BY track_id ASC
+        """,
+        (run_id, frame_number),
+    ).fetchall()
+
+
+def fetch_run_by_id(connection: sqlite3.Connection, run_id: str) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT run_id, parent_run_id, video_id, model_version, config_hash, config_json,
+               schema_version, code_version, source_video_sha256, started_at, completed_at,
+               status, notes
+        FROM processing_runs
+        WHERE run_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+

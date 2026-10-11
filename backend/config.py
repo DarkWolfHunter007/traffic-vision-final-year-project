@@ -40,6 +40,25 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "track_buffer_seconds": 1.0,
         "fuse_score": True,
     },
+    "trajectories": {
+        "ground_point_method": "bottom_center",
+        "max_gap_seconds": 1.0,
+        "min_track_length_frames": 3,
+        "boundary_margin_px": 20,
+    },
+    "visualization": {
+        "enabled": True,
+        "show_boxes": True,
+        "show_labels": True,
+        "show_confidences": True,
+        "show_ids": True,
+        "show_trails": True,
+        "trail_length": 30,
+        "trail_thickness": 2,
+        "box_thickness": 2,
+        "font_scale": 0.5,
+        "output_dir": "data/processed/visualizations",
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -111,6 +130,38 @@ def _validate(config: Mapping[str, Any]) -> None:
         buffer_seconds = tracking.get("track_buffer_seconds")
         if not (isinstance(buffer_seconds, (int, float)) and buffer_seconds > 0):
             raise ConfigError("tracking.track_buffer_seconds must be a positive number")
+    trajectories = config.get("trajectories")
+    if trajectories is not None:
+        if not isinstance(trajectories, Mapping):
+            raise ConfigError("trajectories must be a mapping")
+        if trajectories.get("ground_point_method") != "bottom_center":
+            raise ConfigError("Phase 04 requires trajectories.ground_point_method to be 'bottom_center'")
+        max_gap = trajectories.get("max_gap_seconds")
+        if not (isinstance(max_gap, (int, float)) and max_gap > 0):
+            raise ConfigError("trajectories.max_gap_seconds must be a positive number")
+        min_len = trajectories.get("min_track_length_frames")
+        if not (isinstance(min_len, int) and min_len >= 1):
+            raise ConfigError("trajectories.min_track_length_frames must be a positive integer >= 1")
+        margin = trajectories.get("boundary_margin_px")
+        if not (isinstance(margin, (int, float)) and margin >= 0):
+            raise ConfigError("trajectories.boundary_margin_px must be a non-negative number")
+    visualization = config.get("visualization")
+    if visualization is not None:
+        if not isinstance(visualization, Mapping):
+            raise ConfigError("visualization must be a mapping")
+        for bool_key in ("enabled", "show_boxes", "show_labels", "show_confidences", "show_ids", "show_trails"):
+            if bool_key in visualization and not isinstance(visualization[bool_key], bool):
+                raise ConfigError(f"visualization.{bool_key} must be a boolean")
+        trail_length = visualization.get("trail_length")
+        if trail_length is not None and not (isinstance(trail_length, int) and trail_length >= 0):
+            raise ConfigError("visualization.trail_length must be a non-negative integer")
+        for int_key in ("trail_thickness", "box_thickness"):
+            val = visualization.get(int_key)
+            if val is not None and not (isinstance(val, int) and val >= 1):
+                raise ConfigError(f"visualization.{int_key} must be an integer >= 1")
+        font_scale = visualization.get("font_scale")
+        if font_scale is not None and not (isinstance(font_scale, (int, float)) and font_scale > 0):
+            raise ConfigError("visualization.font_scale must be a positive number")
 
 
 def load_config(path: Path | None = None, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:

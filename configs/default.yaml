@@ -43,3 +43,20 @@ tracking:
   match_thresh: 0.8
   track_buffer_seconds: 1.0
   fuse_score: true
+trajectories:
+  ground_point_method: bottom_center
+  max_gap_seconds: 1.0
+  min_track_length_frames: 3
+  boundary_margin_px: 20
+visualization:
+  enabled: true
+  show_boxes: true
+  show_labels: true
+  show_confidences: true
+  show_ids: true
+  show_trails: true
+  trail_length: 30
+  trail_thickness: 2
+  box_thickness: 2
+  font_scale: 0.5
+  output_dir: data/processed/visualizations
