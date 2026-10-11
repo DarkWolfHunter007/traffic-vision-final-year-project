@@ -107,7 +107,23 @@ def insert_tracks(connection: sqlite3.Connection, rows: Iterable[dict[str, objec
     )
 
 
-def fetch_detections_for_tracking(connection: sqlite3.Connection, run_id: str) -> list[sqlite3.Row]:
+def fetch_detections_for_tracking(
+    connection: sqlite3.Connection,
+    run_id: str,
+    start_frame: int | None = None,
+    end_frame: int | None = None,
+) -> list[sqlite3.Row]:
+    if start_frame is not None and end_frame is not None:
+        return connection.execute(
+            """
+            SELECT detection_id, run_id, video_id, frame_number, timestamp_s,
+                   class_id, class_name, confidence, x1, y1, x2, y2, ground_x, ground_y
+            FROM detections
+            WHERE run_id = ? AND frame_number BETWEEN ? AND ?
+            ORDER BY frame_number ASC, confidence DESC
+            """,
+            (run_id, start_frame, end_frame),
+        ).fetchall()
     return connection.execute(
         """
         SELECT detection_id, run_id, video_id, frame_number, timestamp_s,

@@ -42,6 +42,35 @@ def build_run_trajectories(
         (run["video_id"],),
     ).fetchone()
 
+    # Determine frame_stride from config, run lineage, or parent run lineage
+    frame_stride = 1
+    if config:
+        frame_stride = int(
+            config.get("trajectories", {}).get("frame_stride")
+            or config.get("detection", {}).get("frame_stride", 1)
+        )
+    if frame_stride == 1 and run["config_json"]:
+        try:
+            rc = json.loads(run["config_json"])
+            frame_stride = int(
+                rc.get("trajectories", {}).get("frame_stride")
+                or rc.get("detection", {}).get("frame_stride")
+                or rc.get("tracking", {}).get("frame_stride", 1)
+            )
+        except Exception:
+            pass
+    if frame_stride == 1 and run["parent_run_id"]:
+        parent = fetch_run_by_id(connection, run["parent_run_id"])
+        if parent and parent["config_json"]:
+            try:
+                pc = json.loads(parent["config_json"])
+                frame_stride = int(
+                    pc.get("detection", {}).get("frame_stride")
+                    or pc.get("tracking", {}).get("frame_stride", 1)
+                )
+            except Exception:
+                pass
+
     rows = fetch_tracks_for_run(connection, run_id)
     video_width = video["width"] if video else None
     video_height = video["height"] if video else None
@@ -53,6 +82,7 @@ def build_run_trajectories(
         video_height=video_height,
         last_video_frame=last_frame,
         config=config,
+        frame_stride=frame_stride,
     )
 
 
@@ -64,6 +94,9 @@ def render_preview_visualization(
     output_path: Path | None = None,
 ) -> Path:
     """Render a single annotated preview frame from a completed tracking run."""
+    if frame_number < 0:
+        raise ValueError(f"preview frame_number must be >= 0, got {frame_number}")
+
     database_path = Path(config["paths"]["database_path"])
     if not database_path.is_absolute():
         database_path = repository_root / database_path
@@ -129,6 +162,13 @@ def render_video_visualization(
     end_frame: int | None = None,
 ) -> str:
     """Render a full or segment video with trajectory overlays, recording lineage in processing_runs."""
+    if start_frame is not None and start_frame < 0:
+        raise ValueError(f"start_frame must be >= 0, got {start_frame}")
+    if end_frame is not None and end_frame < 0:
+        raise ValueError(f"end_frame must be >= 0, got {end_frame}")
+    if start_frame is not None and end_frame is not None and start_frame > end_frame:
+        raise ValueError(f"start_frame ({start_frame}) cannot be greater than end_frame ({end_frame})")
+
     database_path = Path(config["paths"]["database_path"])
     if not database_path.is_absolute():
         database_path = repository_root / database_path
@@ -221,6 +261,13 @@ def render_video_visualization(
             rendered_count += 1
 
         writer.release()
+
+        if rendered_count == 0:
+            if temp_output_path.is_file():
+                temp_output_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"No frames rendered (rendered_count=0) for range [{start_frame}, {end_frame}]"
+            )
 
         # Atomic replacement to guarantee partial outputs are never observed as finished
         if temp_output_path.is_file():

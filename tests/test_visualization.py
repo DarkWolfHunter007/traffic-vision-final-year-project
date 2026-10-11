@@ -524,3 +524,75 @@ def test_render_video_visualization_interruption_cleanup(tmp_path: Path, synthet
         assert failed_run is not None
         assert failed_run["status"] == "failed"
         assert "Simulated crash" in failed_run["notes"]
+
+
+def test_render_video_visualization_zero_frames_fails(tmp_path: Path, synthetic_video: Path) -> None:
+    db_path = tmp_path / "traffic_zero.sqlite3"
+    bootstrap_database(db_path)
+    video_meta = inspect_video(synthetic_video)
+    video_sha = sha256_file(synthetic_video)
+
+    with database_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO videos (video_id, filename, path, sha256, fps_nominal, width, height, duration_s, frame_count, ingested_at)
+            VALUES ('vid-syn2', 'syn2.mp4', ?, ?, ?, ?, ?, ?, ?, '2026-10-11T00:00:00Z')
+            """,
+            (
+                str(synthetic_video),
+                video_sha,
+                video_meta.fps_nominal,
+                video_meta.width,
+                video_meta.height,
+                video_meta.duration_s,
+                video_meta.frame_count,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO processing_runs (run_id, video_id, config_hash, config_json, schema_version, code_version, source_video_sha256, started_at, status)
+            VALUES ('track-run-zero', 'vid-syn2', 'cfg1', '{}', '1.0.0', 'code1', ?, '2026-10-11T00:00:00Z', 'completed')
+            """,
+            (video_sha,),
+        )
+
+    out_video_path = tmp_path / "zero_out.mp4"
+    config = load_config(overrides={"paths": {"database_path": str(db_path)}})
+
+    # Frame 999 is past the synthetic video duration (10 frames)
+    with pytest.raises(RuntimeError, match="No frames rendered"):
+        render_video_visualization(
+            "track-run-zero",
+            config,
+            repository_root=tmp_path,
+            output_path=out_video_path,
+            start_frame=999,
+            end_frame=1000,
+        )
+
+    # Verify no file was produced and run marked failed
+    assert not out_video_path.is_file()
+    temp_file = out_video_path.with_name(f"{out_video_path.stem}.tmp{out_video_path.suffix}")
+    assert not temp_file.is_file()
+
+    with database_connection(db_path) as conn:
+        failed_run = conn.execute("SELECT status, notes FROM processing_runs WHERE parent_run_id = 'track-run-zero'").fetchone()
+        assert failed_run is not None
+        assert failed_run["status"] == "failed"
+        assert "No frames rendered" in failed_run["notes"]
+
+
+def test_cli_visualize_argument_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.cli import main
+
+    monkeypatch.setattr("sys.argv", ["traffic-cli", "visualize", "run-1", "--preview-frame", "-1"])
+    with pytest.raises(SystemExit, match="preview-frame must be >= 0"):
+        main()
+
+    monkeypatch.setattr("sys.argv", ["traffic-cli", "visualize", "run-1", "--start-frame", "-5"])
+    with pytest.raises(SystemExit, match="start-frame must be >= 0"):
+        main()
+
+    monkeypatch.setattr("sys.argv", ["traffic-cli", "visualize", "run-1", "--start-frame", "50", "--end-frame", "10"])
+    with pytest.raises(SystemExit, match="cannot be greater than end-frame"):
+        main()

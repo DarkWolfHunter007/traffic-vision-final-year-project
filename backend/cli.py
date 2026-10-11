@@ -79,6 +79,15 @@ def main() -> None:
         print(json.dumps({"run_id": run_id, "parent_run_id": args.parent_run_id}, sort_keys=True))
         return
     if args.command == "visualize":
+        if args.preview_frame is not None and args.preview_frame < 0:
+            raise SystemExit("preview-frame must be >= 0")
+        if args.start_frame is not None and args.start_frame < 0:
+            raise SystemExit("start-frame must be >= 0")
+        if args.end_frame is not None and args.end_frame < 0:
+            raise SystemExit("end-frame must be >= 0")
+        if args.start_frame is not None and args.end_frame is not None and args.start_frame > args.end_frame:
+            raise SystemExit(f"start-frame ({args.start_frame}) cannot be greater than end-frame ({args.end_frame})")
+
         if args.preview_frame is not None:
             output_path = render_preview_visualization(
                 args.parent_run_id,

@@ -61,6 +61,8 @@ class VisualizationConfig:
     font_scale: float = 0.5
     draw_ground_point: bool = True
     ground_point_radius: int = 4
+    max_trail_gap_seconds: float = 1.0
+    max_trail_gap_frames: int | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> VisualizationConfig:
@@ -78,6 +80,8 @@ class VisualizationConfig:
             font_scale=float(data.get("font_scale", 0.5)),
             draw_ground_point=bool(data.get("draw_ground_point", True)),
             ground_point_radius=int(data.get("ground_point_radius", 4)),
+            max_trail_gap_seconds=float(data.get("max_trail_gap_seconds", 1.0)),
+            max_trail_gap_frames=int(data["max_trail_gap_frames"]) if data.get("max_trail_gap_frames") is not None else None,
         )
 
 
@@ -111,27 +115,54 @@ def render_frame_annotations(
     for trajectory, point in tracks:
         color = get_track_color(trajectory.track_id)
 
-        # 1. Motion Trail
+        # 1. Motion Trail (broken into contiguous segments across observation gaps)
         if cfg.show_trails and cfg.trail_length > 0:
-            past_points = [
-                (p.ground_x, p.ground_y)
+            past_obs = [
+                p
                 for p in trajectory.points
                 if p.frame_number <= frame_number
             ]
-            if len(past_points) >= 2:
-                recent_points = past_points[-cfg.trail_length :]
-                pts_arr = np.array(
-                    [[int(gx), int(gy)] for gx, gy in recent_points],
-                    dtype=np.int32,
-                ).reshape((-1, 1, 2))
-                cv2.polylines(
-                    canvas,
-                    [pts_arr],
-                    isClosed=False,
-                    color=color,
-                    thickness=cfg.trail_thickness,
-                    lineType=cv2.LINE_AA,
-                )
+            if len(past_obs) >= 2:
+                recent_obs = past_obs[-cfg.trail_length :]
+                segments: list[list[tuple[float, float]]] = []
+                current_segment: list[tuple[float, float]] = [
+                    (recent_obs[0].ground_x, recent_obs[0].ground_y)
+                ]
+                for i in range(len(recent_obs) - 1):
+                    p_curr = recent_obs[i]
+                    p_next = recent_obs[i + 1]
+                    time_gap = p_next.timestamp_s - p_curr.timestamp_s
+                    frame_gap = p_next.frame_number - p_curr.frame_number
+
+                    is_gap = False
+                    if cfg.max_trail_gap_seconds is not None and time_gap > cfg.max_trail_gap_seconds:
+                        is_gap = True
+                    if cfg.max_trail_gap_frames is not None and frame_gap > cfg.max_trail_gap_frames:
+                        is_gap = True
+
+                    if is_gap:
+                        if len(current_segment) >= 2:
+                            segments.append(current_segment)
+                        current_segment = [(p_next.ground_x, p_next.ground_y)]
+                    else:
+                        current_segment.append((p_next.ground_x, p_next.ground_y))
+
+                if len(current_segment) >= 2:
+                    segments.append(current_segment)
+
+                for seg in segments:
+                    pts_arr = np.array(
+                        [[int(round(gx)), int(round(gy))] for gx, gy in seg],
+                        dtype=np.int32,
+                    ).reshape((-1, 1, 2))
+                    cv2.polylines(
+                        canvas,
+                        [pts_arr],
+                        isClosed=False,
+                        color=color,
+                        thickness=cfg.trail_thickness,
+                        lineType=cv2.LINE_AA,
+                    )
 
         # 2. Bounding Box
         x1, y1 = int(round(point.x1)), int(round(point.y1))

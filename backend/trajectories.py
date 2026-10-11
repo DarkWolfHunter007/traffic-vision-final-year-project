@@ -22,6 +22,19 @@ VALID_TRAJECTORY_STATUSES: frozenset[str] = frozenset(
     {STATUS_ACTIVE, STATUS_COMPLETE, STATUS_FRAGMENTED, STATUS_INVALID}
 )
 
+LIFECYCLE_ACTIVE = "active"
+LIFECYCLE_ENDED = "ended"
+LIFECYCLE_UNKNOWN = "unknown"
+
+CONTINUITY_CONTINUOUS = "continuous"
+CONTINUITY_DISCONTINUOUS = "discontinuous"
+CONTINUITY_INVALID = "invalid"
+
+TERMINATION_BOUNDARY_EXIT = "boundary_exit"
+TERMINATION_INTERIOR = "interior_termination"
+TERMINATION_VIDEO_END = "video_end"
+TERMINATION_INVALID = "invalid"
+
 
 def compute_ground_point(
     x1: float,
@@ -112,6 +125,9 @@ class Trajectory:
     duration_s: float
     is_incomplete: bool
     diagnostics: dict[str, Any] = field(default_factory=dict)
+    lifecycle: str = LIFECYCLE_ENDED
+    continuity: str = CONTINUITY_CONTINUOUS
+    termination_reason: str | None = None
 
     @property
     def start_frame(self) -> int | None:
@@ -158,6 +174,7 @@ def build_trajectories(
     video_height: int | None = None,
     last_video_frame: int | None = None,
     config: Mapping[str, Any] | None = None,
+    frame_stride: int | None = None,
 ) -> dict[int, Trajectory]:
     """Group, chronologically order, and classify trajectory histories by track_id.
 
@@ -167,18 +184,41 @@ def build_trajectories(
         video_height: Source video height in pixels, if known.
         last_video_frame: Highest frame index in the source video, if known.
         config: Optional configuration dictionary with 'trajectories' settings.
+        frame_stride: Optional sampling cadence (stride); if None, inferred from config.
 
     Returns:
         Mapping of track_id to Trajectory instances.
+
+    Raises:
+        ValueError: If observations span multiple processing runs.
     """
     if not observations:
         return {}
+
+    run_ids = {
+        str(row["run_id"])
+        for row in observations
+        if "run_id" in row and row["run_id"] is not None
+    }
+    if len(run_ids) > 1:
+        raise ValueError(
+            f"build_trajectories received observations from multiple runs: {sorted(run_ids)}. "
+            "Observations must be scoped to a single run_id."
+        )
 
     traj_cfg = (config or {}).get("trajectories", {})
     ground_method = traj_cfg.get("ground_point_method", "bottom_center")
     max_gap_seconds = float(traj_cfg.get("max_gap_seconds", 1.0))
     min_track_length = int(traj_cfg.get("min_track_length_frames", 3))
     boundary_margin = float(traj_cfg.get("boundary_margin_px", 20.0))
+
+    if frame_stride is None:
+        frame_stride = int(
+            traj_cfg.get("frame_stride")
+            or (config or {}).get("detection", {}).get("frame_stride", 1)
+        )
+    if frame_stride < 1:
+        frame_stride = 1
 
     # Group observations by track_id
     grouped_rows: dict[int, list[Any]] = defaultdict(list)
@@ -213,6 +253,10 @@ def build_trajectories(
                 break
 
             fn = int(row["frame_number"])
+            if fn < 0:
+                is_invalid = True
+                invalid_reason = f"Negative frame_number {fn}"
+                break
             if fn in seen_frames:
                 is_invalid = True
                 invalid_reason = f"Duplicate observation detected at frame_number {fn}"
@@ -220,11 +264,15 @@ def build_trajectories(
             seen_frames.add(fn)
 
             ts = _row_val(row, "timestamp_s")
-            if ts is None or math.isnan(float(ts)):
+            if ts is None or math.isnan(float(ts)) or math.isinf(float(ts)):
                 is_invalid = True
-                invalid_reason = f"Missing or NaN timestamp_s at frame_number {fn}"
+                invalid_reason = f"Missing, NaN, or infinite timestamp_s at frame_number {fn}"
                 break
             ts_float = float(ts)
+            if ts_float < 0.0:
+                is_invalid = True
+                invalid_reason = f"Negative timestamp_s {ts_float}s at frame_number {fn}"
+                break
 
             if prev_timestamp is not None and ts_float < prev_timestamp:
                 is_invalid = True
@@ -234,10 +282,23 @@ def build_trajectories(
                 break
             prev_timestamp = ts_float
 
-            x1 = float(row["x1"])
-            y1 = float(row["y1"])
-            x2 = float(row["x2"])
-            y2 = float(row["y2"])
+            try:
+                x1 = float(row["x1"])
+                y1 = float(row["y1"])
+                x2 = float(row["x2"])
+                y2 = float(row["y2"])
+            except (ValueError, TypeError) as err:
+                is_invalid = True
+                invalid_reason = f"Non-numeric bounding box coordinates at frame {fn}: {err}"
+                break
+
+            for c_name, c_val in (("x1", x1), ("y1", y1), ("x2", x2), ("y2", y2)):
+                if math.isnan(c_val) or math.isinf(c_val):
+                    is_invalid = True
+                    invalid_reason = f"Non-finite bounding box coordinate {c_name}={c_val} at frame {fn}"
+                    break
+            if is_invalid:
+                break
 
             try:
                 gx, gy = compute_ground_point(x1, y1, x2, y2, method=ground_method)
@@ -246,11 +307,32 @@ def build_trajectories(
                 invalid_reason = f"Invalid bounding box at frame {fn}: {err}"
                 break
 
-            # Explicitly preserve existing ground point if present and matching
+            # Validate stored ground coordinates against computed ground point
             stored_gx = _row_val(row, "ground_x")
             stored_gy = _row_val(row, "ground_y")
-            point_gx = float(stored_gx) if stored_gx is not None else gx
-            point_gy = float(stored_gy) if stored_gy is not None else gy
+            point_gx = gx
+            point_gy = gy
+            if stored_gx is not None and stored_gy is not None:
+                try:
+                    sgx_float = float(stored_gx)
+                    sgy_float = float(stored_gy)
+                    if math.isnan(sgx_float) or math.isinf(sgx_float) or math.isnan(sgy_float) or math.isinf(sgy_float):
+                        is_invalid = True
+                        invalid_reason = f"Non-finite stored ground coordinates at frame {fn}"
+                        break
+                    if abs(sgx_float - gx) > 1e-3 or abs(sgy_float - gy) > 1e-3:
+                        is_invalid = True
+                        invalid_reason = (
+                            f"Corrupt stored ground coordinates at frame {fn}: "
+                            f"stored=({sgx_float}, {sgy_float}) != computed=({gx}, {gy})"
+                        )
+                        break
+                    point_gx = sgx_float
+                    point_gy = sgy_float
+                except (ValueError, TypeError):
+                    is_invalid = True
+                    invalid_reason = f"Malformed non-numeric stored ground coordinates at frame {fn}"
+                    break
 
             conf = _row_val(row, "confidence")
             conf_float = float(conf) if conf is not None else None
@@ -274,13 +356,18 @@ def build_trajectories(
         # Compute consensus vehicle class using Phase 03 voting
         consensus_class = resolve_track_class(points) if points else "unknown"
 
-        # Calculate gaps and missing frame counts
+        # Calculate stride-aware gaps and missing frame counts
         total_missing_frames = 0
+        raw_missing_frames = 0
         internal_gaps: list[dict[str, Any]] = []
         for i in range(len(points) - 1):
             fn_gap = points[i + 1].frame_number - points[i].frame_number
             if fn_gap > 1:
-                total_missing_frames += (fn_gap - 1)
+                raw_missing_frames += (fn_gap - 1)
+                expected_steps = round(fn_gap / frame_stride)
+                missing_samples = max(0, expected_steps - 1)
+                total_missing_frames += missing_samples
+
             time_gap = points[i + 1].timestamp_s - points[i].timestamp_s
             if time_gap > max_gap_seconds:
                 internal_gaps.append(
@@ -293,38 +380,60 @@ def build_trajectories(
 
         duration_s = (points[-1].timestamp_s - points[0].timestamp_s) if len(points) > 1 else 0.0
 
-        # Classify continuity status
+        # Classify continuity status, lifecycle, and termination reason
         exited_boundary: bool | None = None
+        if video_width is not None and video_height is not None and points:
+            last_pt = points[-1]
+            exited_boundary = is_near_boundary(
+                last_pt.x1,
+                last_pt.y1,
+                last_pt.x2,
+                last_pt.y2,
+                video_width,
+                video_height,
+                boundary_margin,
+            )
+
         if is_invalid or not points:
             status = STATUS_INVALID
             status_reason = invalid_reason or "Empty or malformed trajectory points"
+            lifecycle = LIFECYCLE_ENDED
+            continuity = CONTINUITY_INVALID
+            termination_reason = TERMINATION_INVALID
+        elif internal_gaps:
+            status = STATUS_FRAGMENTED
+            continuity = CONTINUITY_DISCONTINUOUS
+            status_reason = (
+                f"Observation gap exceeded threshold ({len(internal_gaps)} gap(s) > {max_gap_seconds}s)"
+            )
+            if last_video_frame is not None and points[-1].frame_number >= last_video_frame:
+                lifecycle = LIFECYCLE_ACTIVE
+                termination_reason = TERMINATION_VIDEO_END
+            else:
+                lifecycle = LIFECYCLE_ENDED
+                if exited_boundary is True:
+                    termination_reason = TERMINATION_BOUNDARY_EXIT
+                elif exited_boundary is False:
+                    termination_reason = TERMINATION_INTERIOR
+                else:
+                    termination_reason = None
         elif last_video_frame is not None and points[-1].frame_number >= last_video_frame:
             status = STATUS_ACTIVE
+            continuity = CONTINUITY_CONTINUOUS
+            lifecycle = LIFECYCLE_ACTIVE
+            termination_reason = TERMINATION_VIDEO_END
             status_reason = f"Track remains active on final video frame ({points[-1].frame_number})"
         else:
-            if video_width is not None and video_height is not None:
-                last_pt = points[-1]
-                exited_boundary = is_near_boundary(
-                    last_pt.x1,
-                    last_pt.y1,
-                    last_pt.x2,
-                    last_pt.y2,
-                    video_width,
-                    video_height,
-                    boundary_margin,
-                )
-
-            if internal_gaps:
-                status = STATUS_FRAGMENTED
-                status_reason = (
-                    f"Observation gap exceeded threshold ({len(internal_gaps)} gap(s) > {max_gap_seconds}s)"
-                )
-            elif exited_boundary is False:
+            lifecycle = LIFECYCLE_ENDED
+            continuity = CONTINUITY_CONTINUOUS
+            if exited_boundary is False:
                 # Ended in the interior of the scene without reaching the frame boundary
                 status = STATUS_FRAGMENTED
+                termination_reason = TERMINATION_INTERIOR
                 status_reason = "Track terminated in scene interior without reaching frame boundary"
             else:
                 status = STATUS_COMPLETE
+                termination_reason = TERMINATION_BOUNDARY_EXIT if exited_boundary is True else None
                 status_reason = "Track completed normally"
 
         is_incomplete = (
@@ -335,10 +444,15 @@ def build_trajectories(
         diagnostics: dict[str, Any] = {
             "internal_gaps": internal_gaps,
             "total_missing_frames": total_missing_frames,
+            "raw_missing_frames": raw_missing_frames,
+            "frame_stride": frame_stride,
             "exited_boundary": exited_boundary,
             "points_count": len(points),
             "is_short_track": len(points) < min_track_length,
             "suspected_fragmentation": status == STATUS_FRAGMENTED,
+            "lifecycle": lifecycle,
+            "continuity": continuity,
+            "termination_reason": termination_reason,
             "uncertainty_note": (
                 "Temporal gaps and interior disappearance indicate possible occlusion or detector loss; "
                 "physical vehicle fragmentation cannot be proved without manual ground truth."
@@ -358,6 +472,9 @@ def build_trajectories(
             duration_s=round(duration_s, 6),
             is_incomplete=is_incomplete,
             diagnostics=diagnostics,
+            lifecycle=lifecycle,
+            continuity=continuity,
+            termination_reason=termination_reason,
         )
 
     return trajectories

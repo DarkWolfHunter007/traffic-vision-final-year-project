@@ -200,3 +200,33 @@ def test_tracking_rejects_missing_or_incomplete_parent_run(tmp_path: Path) -> No
 
     with pytest.raises(ValueError, match="Parent processing run does not exist"):
         run_tracking("non-existent-parent", config, Path.cwd())
+
+
+def test_tracking_windowed_chunk_streaming(tmp_path: Path, source_video: Path) -> None:
+    """Verify that tracking streams in bounded chunks, correctly traversing chunk boundaries."""
+    database = tmp_path / "traffic_chunks.sqlite3"
+    model_path = tmp_path / "fake-weights.pt"
+    model_path.write_bytes(b"fixture-weights")
+
+    config = load_config(
+        overrides={
+            "paths": {"database_path": str(database)},
+            "streaming": {"frame_batch_size": 2},
+            "detection": {
+                "model": {"version": "fixture-v1", "path": str(model_path), "device": "cpu"},
+                "class_mapping": {"car": "car"},
+            },
+            "tracking": {"batch_size": 2},
+        }
+    )
+
+    ingest_result = ingest_video(source_video, config, repository_root=Path.cwd())
+    detection_run_id = run_detection(ingest_result["run_id"], config, Path.cwd(), FakeDetector())
+    tracking_run_id = run_tracking(detection_run_id, config, Path.cwd())
+
+    with sqlite3.connect(database) as conn:
+        run = conn.execute("SELECT status FROM processing_runs WHERE run_id = ?", (tracking_run_id,)).fetchone()
+        tracks = conn.execute("SELECT COUNT(*) FROM tracks WHERE run_id = ?", (tracking_run_id,)).fetchone()[0]
+
+    assert run[0] == "completed"
+    assert tracks >= 2

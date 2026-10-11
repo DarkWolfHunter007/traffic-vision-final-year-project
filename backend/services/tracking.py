@@ -101,69 +101,87 @@ def run_tracking(
 
     try:
         with database_connection(database_path) as connection:
-            raw_detections = fetch_detections_for_tracking(connection, parent_run_id)
-            detections_by_frame: dict[int, list[Detection]] = {}
-            for row in raw_detections:
-                fn = row["frame_number"]
-                detections_by_frame.setdefault(fn, []).append(
-                    Detection(
-                        class_id=row["class_id"],
-                        class_name=row["class_name"],
-                        confidence=row["confidence"],
-                        x1=row["x1"],
-                        y1=row["y1"],
-                        x2=row["x2"],
-                        y2=row["y2"],
-                    )
-                )
-
-            # Query all video frames associated with this video to ensure timeline continuity
-            frame_rows = connection.execute(
+            bounds = connection.execute(
                 """
-                SELECT frame_number, pts_s
+                SELECT MIN(frame_number) AS min_fn, MAX(frame_number) AS max_fn, COUNT(*) AS frame_cnt
                 FROM video_frames
                 WHERE video_id = ?
-                ORDER BY frame_number ASC
                 """,
                 (parent["video_id"],),
-            ).fetchall()
+            ).fetchone()
+
+            min_fn = bounds["min_fn"] if bounds and bounds["min_fn"] is not None else 0
+            max_fn = bounds["max_fn"] if bounds and bounds["max_fn"] is not None else -1
+            frame_cnt = bounds["frame_cnt"] if bounds and bounds["frame_cnt"] is not None else 0
 
             pending_rows: list[dict[str, Any]] = []
+            chunk_size = max(batch_size, 500)
 
-            for frame_row in frame_rows:
-                fn = frame_row["frame_number"]
-                if fn % frame_stride:
-                    continue
-                pts_s = frame_row["pts_s"]
-                frame_dets = detections_by_frame.get(fn, [])
-                obs_list = tracker.update(fn, pts_s, frame_dets)
-
-                for obs in obs_list:
-                    pending_rows.append(
-                        {
-                            "track_observation_id": str(uuid4()),
-                            "run_id": run_id,
-                            "video_id": parent["video_id"],
-                            "track_id": obs.track_id,
-                            "frame_number": obs.frame_number,
-                            "timestamp_s": obs.timestamp_s,
-                            "vehicle_class": obs.vehicle_class,
-                            "confidence": obs.confidence,
-                            "x1": obs.x1,
-                            "y1": obs.y1,
-                            "x2": obs.x2,
-                            "y2": obs.y2,
-                            "ground_x": obs.ground_x,
-                            "ground_y": obs.ground_y,
-                            "world_x": None,
-                            "world_y": None,
-                            "calibration_id": None,
-                            "trajectory_status": obs.trajectory_status,
-                        }
+            if frame_cnt > 0:
+                for chunk_start in range(min_fn, max_fn + 1, chunk_size):
+                    chunk_end = min(chunk_start + chunk_size - 1, max_fn)
+                    raw_detections = fetch_detections_for_tracking(
+                        connection, parent_run_id, start_frame=chunk_start, end_frame=chunk_end
                     )
-                    if len(pending_rows) >= batch_size:
-                        insert_tracks(connection, pending_rows)
-                        pending_rows.clear()
+                    detections_by_frame: dict[int, list[Detection]] = {}
+                    for row in raw_detections:
+                        fn = row["frame_number"]
+                        detections_by_frame.setdefault(fn, []).append(
+                            Detection(
+                                class_id=row["class_id"],
+                                class_name=row["class_name"],
+                                confidence=row["confidence"],
+                                x1=row["x1"],
+                                y1=row["y1"],
+                                x2=row["x2"],
+                                y2=row["y2"],
+                            )
+                        )
+
+                    frame_rows = connection.execute(
+                        """
+                        SELECT frame_number, pts_s
+                        FROM video_frames
+                        WHERE video_id = ? AND frame_number BETWEEN ? AND ?
+                        ORDER BY frame_number ASC
+                        """,
+                        (parent["video_id"], chunk_start, chunk_end),
+                    ).fetchall()
+
+                    for frame_row in frame_rows:
+                        fn = frame_row["frame_number"]
+                        if fn % frame_stride:
+                            continue
+                        pts_s = frame_row["pts_s"]
+                        frame_dets = detections_by_frame.get(fn, [])
+                        obs_list = tracker.update(fn, pts_s, frame_dets)
+
+                        for obs in obs_list:
+                            pending_rows.append(
+                                {
+                                    "track_observation_id": str(uuid4()),
+                                    "run_id": run_id,
+                                    "video_id": parent["video_id"],
+                                    "track_id": obs.track_id,
+                                    "frame_number": obs.frame_number,
+                                    "timestamp_s": obs.timestamp_s,
+                                    "vehicle_class": obs.vehicle_class,
+                                    "confidence": obs.confidence,
+                                    "x1": obs.x1,
+                                    "y1": obs.y1,
+                                    "x2": obs.x2,
+                                    "y2": obs.y2,
+                                    "ground_x": obs.ground_x,
+                                    "ground_y": obs.ground_y,
+                                    "world_x": None,
+                                    "world_y": None,
+                                    "calibration_id": None,
+                                    "trajectory_status": obs.trajectory_status,
+                                }
+                            )
+                            if len(pending_rows) >= batch_size:
+                                insert_tracks(connection, pending_rows)
+                                pending_rows.clear()
 
             if pending_rows:
                 insert_tracks(connection, pending_rows)
