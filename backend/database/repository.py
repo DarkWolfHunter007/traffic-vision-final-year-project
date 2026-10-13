@@ -265,3 +265,166 @@ def fetch_zone_by_id(
     ).fetchone()
 
 
+def insert_video_segment(connection: sqlite3.Connection, segment: dict[str, object]) -> None:
+    connection.execute(
+        """
+        INSERT INTO video_segments (
+            segment_id, video_id, start_s, end_s, start_frame, end_frame, label, condition_notes
+        ) VALUES (
+            :segment_id, :video_id, :start_s, :end_s, :start_frame, :end_frame, :label, :condition_notes
+        )
+        """,
+        segment,
+    )
+
+
+def insert_video_segments(connection: sqlite3.Connection, segments: Iterable[dict[str, object]]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO video_segments (
+            segment_id, video_id, start_s, end_s, start_frame, end_frame, label, condition_notes
+        ) VALUES (
+            :segment_id, :video_id, :start_s, :end_s, :start_frame, :end_frame, :label, :condition_notes
+        )
+        """,
+        segments,
+    )
+
+
+def fetch_video_segments_for_video(connection: sqlite3.Connection, video_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT segment_id, video_id, start_s, end_s, start_frame, end_frame, label, condition_notes
+        FROM video_segments
+        WHERE video_id = ?
+        ORDER BY start_s ASC
+        """,
+        (video_id,),
+    ).fetchall()
+
+
+def fetch_video_segment_by_id(connection: sqlite3.Connection, segment_id: str) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT segment_id, video_id, start_s, end_s, start_frame, end_frame, label, condition_notes
+        FROM video_segments
+        WHERE segment_id = ?
+        """,
+        (segment_id,),
+    ).fetchone()
+
+
+def insert_ground_truth_set(connection: sqlite3.Connection, gt_set: dict[str, object]) -> None:
+    connection.execute(
+        """
+        INSERT INTO ground_truth_sets (
+            ground_truth_set_id, name, source_description, split_group, created_at
+        ) VALUES (
+            :ground_truth_set_id, :name, :source_description, :split_group, :created_at
+        )
+        """,
+        gt_set,
+    )
+
+
+def fetch_ground_truth_set_by_id(connection: sqlite3.Connection, ground_truth_set_id: str) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT ground_truth_set_id, name, source_description, split_group, created_at
+        FROM ground_truth_sets
+        WHERE ground_truth_set_id = ?
+        """,
+        (ground_truth_set_id,),
+    ).fetchone()
+
+
+def insert_ground_truth_counts(connection: sqlite3.Connection, counts: Iterable[dict[str, object]]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO ground_truth_counts (
+            ground_truth_count_id, ground_truth_set_id, video_segment_id, approach,
+            movement, vehicle_class, observed_count
+        ) VALUES (
+            :ground_truth_count_id, :ground_truth_set_id, :video_segment_id, :approach,
+            :movement, :vehicle_class, :observed_count
+        )
+        """,
+        counts,
+    )
+
+
+def fetch_ground_truth_counts_for_set(connection: sqlite3.Connection, ground_truth_set_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT ground_truth_count_id, ground_truth_set_id, video_segment_id, approach,
+               movement, vehicle_class, observed_count
+        FROM ground_truth_counts
+        WHERE ground_truth_set_id = ?
+        ORDER BY video_segment_id ASC, approach ASC, movement ASC
+        """,
+        (ground_truth_set_id,),
+    ).fetchall()
+
+
+def insert_crossing_events(connection: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO crossing_events (
+            crossing_event_id, run_id, video_id, line_id, track_id, frame_number,
+            timestamp_s, vehicle_class, direction, approach, movement,
+            line_config_version, deduplicated
+        ) VALUES (
+            :crossing_event_id, :run_id, :video_id, :line_id, :track_id, :frame_number,
+            :timestamp_s, :vehicle_class, :direction, :approach, :movement,
+            :line_config_version, :deduplicated
+        )
+        """,
+        rows,
+    )
+
+
+def fetch_crossing_events_for_run(connection: sqlite3.Connection, run_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT crossing_event_id, run_id, video_id, line_id, track_id, frame_number,
+               timestamp_s, vehicle_class, direction, approach, movement,
+               line_config_version, deduplicated
+        FROM crossing_events
+        WHERE run_id = ?
+        ORDER BY timestamp_s ASC, frame_number ASC
+        """,
+        (run_id,),
+    ).fetchall()
+
+
+def insert_traffic_volume_bins(connection: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO traffic_volume_bins (
+            bin_id, run_id, video_id, line_id, bin_start_s, bin_duration_s,
+            observed_duration_s, vehicle_class, approach, movement,
+            count, extrapolated_vehicles_per_hour
+        ) VALUES (
+            :bin_id, :run_id, :video_id, :line_id, :bin_start_s, :bin_duration_s,
+            :observed_duration_s, :vehicle_class, :approach, :movement,
+            :count, :extrapolated_vehicles_per_hour
+        )
+        """,
+        rows,
+    )
+
+
+def fetch_traffic_volume_bins_for_run(connection: sqlite3.Connection, run_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT bin_id, run_id, video_id, line_id, bin_start_s, bin_duration_s,
+               observed_duration_s, vehicle_class, approach, movement,
+               count, extrapolated_vehicles_per_hour
+        FROM traffic_volume_bins
+        WHERE run_id = ?
+        ORDER BY bin_start_s ASC, line_id ASC
+        """,
+        (run_id,),
+    ).fetchall()
+
+

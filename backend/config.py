@@ -60,6 +60,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "font_scale": 0.5,
         "output_dir": "data/processed/visualizations",
     },
+    "counting": {
+        "bin_duration_s": 900.0,
+        "min_reentry_gap_s": 2.0,
+        "error_tolerance_pct": 10.0,
+        "movement_mapping": {
+            "north": {"south": "through", "east": "left", "west": "right", "north": "u_turn"},
+            "south": {"north": "through", "west": "left", "east": "right", "south": "u_turn"},
+            "east": {"west": "through", "north": "right", "south": "left", "east": "u_turn"},
+            "west": {"east": "through", "south": "right", "north": "left", "west": "u_turn"},
+        },
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -169,6 +180,22 @@ def _validate(config: Mapping[str, Any]) -> None:
         font_scale = visualization.get("font_scale")
         if font_scale is not None and not (isinstance(font_scale, (int, float)) and font_scale > 0):
             raise ConfigError("visualization.font_scale must be a positive number")
+    counting = config.get("counting")
+    if counting is not None:
+        if not isinstance(counting, Mapping):
+            raise ConfigError("counting must be a mapping")
+        bin_dur = counting.get("bin_duration_s")
+        if not (isinstance(bin_dur, (int, float)) and bin_dur > 0):
+            raise ConfigError("counting.bin_duration_s must be a positive number")
+        reentry_gap = counting.get("min_reentry_gap_s")
+        if not (isinstance(reentry_gap, (int, float)) and reentry_gap >= 0):
+            raise ConfigError("counting.min_reentry_gap_s must be a non-negative number")
+        tol = counting.get("error_tolerance_pct")
+        if not (isinstance(tol, (int, float)) and tol > 0):
+            raise ConfigError("counting.error_tolerance_pct must be a positive number")
+        mapping = counting.get("movement_mapping")
+        if mapping is not None and not isinstance(mapping, Mapping):
+            raise ConfigError("counting.movement_mapping must be a mapping")
 
 
 def load_config(path: Path | None = None, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:

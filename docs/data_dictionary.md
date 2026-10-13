@@ -73,3 +73,27 @@ The SQLite schema must enforce these invariants rather than relying only on appl
 ## Phase ownership: API and frontend skeleton
 
 Phase 01 owns only the minimal API/frontend skeleton needed to establish repository wiring, health/status endpoints, configuration visibility, and a stable application entry point. It does not implement phase-specific CV endpoints, dashboard features, or business logic. Later phases own their domain endpoints and UI behavior.
+
+## Phase 06 counting, volume bins, and ground truth
+
+- `video_segments`: canonical video segment boundaries for manual counts and dataset splitting.
+  - `segment_id`: stable text primary key.
+  - `video_id`: foreign key referencing `videos(video_id)`.
+  - `start_s` / `end_s`: segment time interval in seconds from source video timeline.
+  - `start_frame` / `end_frame`: segment frame index bounds.
+  - `label`: optional descriptive label (e.g. "peak_morning", "rain_interval").
+  - `condition_notes`: optional researcher notes on lighting, weather, or occlusions.
+- `ground_truth_counts`:
+  - `video_segment_id`: enforced foreign key referencing `video_segments(segment_id)`.
+  - `approach`: declared intersection approach name.
+  - `movement`: turning movement (`left`, `through`, `right`, `u_turn`, or `unknown`).
+  - `vehicle_class`: vehicle category (e.g. "car", "bus", "auto_rickshaw").
+  - `observed_count`: integer manual reference count.
+- `crossing_events`:
+  - `deduplicated`: integer boolean (0 or 1). `0` indicates a primary countable crossing; `1` indicates a duplicate re-entry within `min_reentry_gap_s` or non-countable event. Raw events are preserved; nothing is silently dropped.
+- `traffic_volume_bins`:
+  - `bin_start_s`: start of 15-minute aggregation window (`k * bin_duration_s`).
+  - `bin_duration_s`: configured bin duration (default 900.0 s).
+  - `observed_duration_s`: actual observed duration in seconds within the bin. Truncated or partial final bins retain their actual observed elapsed time.
+  - `extrapolated_vehicles_per_hour`: extrapolated rate `count * 3600 / observed_duration_s`. `NULL` when `observed_duration_s == 0`.
+

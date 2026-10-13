@@ -62,3 +62,29 @@ visualization:
   box_thickness: 2
   font_scale: 0.5
   output_dir: data/processed/visualizations
+counting:
+  bin_duration_s: 900.0
+  min_reentry_gap_s: 2.0
+  error_tolerance_pct: 10.0
+  movement_mapping:
+    north:
+      south: through
+      east: left
+      west: right
+      north: u_turn
+    south:
+      north: through
+      west: left
+      east: right
+      south: u_turn
+    east:
+      west: through
+      north: right
+      south: left
+      east: u_turn
+    west:
+      east: through
+      south: right
+      north: left
+      west: u_turn
+

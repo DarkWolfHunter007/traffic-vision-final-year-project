@@ -7,8 +7,13 @@ import json
 from pathlib import Path
 
 from backend.config import load_config
-from backend.database.connection import bootstrap_database
+from backend.database.connection import bootstrap_database, migrate_database
 from backend.detection import UltralyticsDetector
+from backend.services.counting import (
+    compare_counts,
+    load_ground_truth,
+    run_counting,
+)
 from backend.services.detection import run_detection
 from backend.services.geometry_config import (
     load_geometry_config,
@@ -58,6 +63,18 @@ def build_parser() -> argparse.ArgumentParser:
     show_geom.add_argument("--output", type=Path, required=True)
     show_geom.add_argument("--frame", type=int, default=0)
     show_geom.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    count_cmd = commands.add_parser("count", help="Run configured vehicle counting for a tracking parent run")
+    count_cmd.add_argument("parent_run_id")
+    count_cmd.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    load_gt = commands.add_parser("load-ground-truth", help="Load ground-truth counting dataset from a file")
+    load_gt.add_argument("file", type=Path)
+    load_gt.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    cmp_counts = commands.add_parser("compare-counts", help="Compare counting results against ground-truth dataset")
+    cmp_counts.add_argument("run_id")
+    cmp_counts.add_argument("--ground-truth-set", default=None)
+    cmp_counts.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    migrate_cmd = commands.add_parser("migrate-db", help="Explicitly upgrade the canonical SQLite database schema")
+    migrate_cmd.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
 
 
@@ -159,6 +176,21 @@ def main() -> None:
                 sort_keys=True,
             )
         )
+        return
+    if args.command == "migrate-db":
+        print(json.dumps({"database_path": str(database_path), "schema_version": migrate_database(database_path)}))
+        return
+    if args.command == "count":
+        run_id = run_counting(args.parent_run_id, config, REPOSITORY_ROOT)
+        print(json.dumps({"run_id": run_id, "parent_run_id": args.parent_run_id}, sort_keys=True))
+        return
+    if args.command == "load-ground-truth":
+        result = load_ground_truth(args.file, config=config, repository_root=REPOSITORY_ROOT)
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "compare-counts":
+        report = compare_counts(args.run_id, ground_truth_set_id=args.ground_truth_set, config=config, repository_root=REPOSITORY_ROOT)
+        print(json.dumps(report, sort_keys=True))
         return
     result = ingest_video(
         args.video,
