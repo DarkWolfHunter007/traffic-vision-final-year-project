@@ -9,6 +9,10 @@ from pathlib import Path
 from backend.config import load_config
 from backend.database.connection import bootstrap_database, migrate_database
 from backend.detection import UltralyticsDetector
+from backend.services.calibration import (
+    get_calibration,
+    run_calibration,
+)
 from backend.services.counting import (
     compare_counts,
     load_ground_truth,
@@ -75,6 +79,13 @@ def build_parser() -> argparse.ArgumentParser:
     cmp_counts.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     migrate_cmd = commands.add_parser("migrate-db", help="Explicitly upgrade the canonical SQLite database schema")
     migrate_cmd.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    calib_cmd = commands.add_parser("calibrate", help="Run planar homography camera calibration from reference points")
+    calib_cmd.add_argument("target", help="Parent processing run ID or video ID")
+    calib_cmd.add_argument("points_file", type=Path, help="Path to YAML or JSON reference points file")
+    calib_cmd.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    show_calib = commands.add_parser("show-calibration", help="Inspect an existing calibration run and its diagnostics")
+    show_calib.add_argument("calibration_id", help="Calibration ID")
+    show_calib.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
 
 
@@ -191,6 +202,25 @@ def main() -> None:
     if args.command == "compare-counts":
         report = compare_counts(args.run_id, ground_truth_set_id=args.ground_truth_set, config=config, repository_root=REPOSITORY_ROOT)
         print(json.dumps(report, sort_keys=True))
+        return
+    if args.command == "calibrate":
+        result = run_calibration(
+            args.target,
+            args.points_file,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "show-calibration":
+        calib = get_calibration(
+            args.calibration_id,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        if calib is None:
+            raise SystemExit(f"Calibration '{args.calibration_id}' not found")
+        print(json.dumps(calib, sort_keys=True))
         return
     result = ingest_video(
         args.video,

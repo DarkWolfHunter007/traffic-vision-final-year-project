@@ -87,4 +87,12 @@ counting:
       south: right
       north: left
       west: u_turn
+calibration:
+  method: planar_homography
+  min_points: 6
+  held_out_count: 2
+  max_reprojection_error_m: 1.0
+  distortion_check_enabled: false
+  flat_road_assumption: true
+  coordinate_unit: meter
 

@@ -428,3 +428,87 @@ def fetch_traffic_volume_bins_for_run(connection: sqlite3.Connection, run_id: st
     ).fetchall()
 
 
+def insert_calibration_run(connection: sqlite3.Connection, run: dict[str, object]) -> None:
+    connection.execute(
+        """
+        INSERT INTO calibration_runs (
+            calibration_id, run_id, video_id, method, point_count,
+            held_out_point_count, reprojection_error_m_mean, reprojection_error_m_max,
+            distortion_checked, flat_road_assumption, accepted, parameters_json
+        ) VALUES (
+            :calibration_id, :run_id, :video_id, :method, :point_count,
+            :held_out_point_count, :reprojection_error_m_mean, :reprojection_error_m_max,
+            :distortion_checked, :flat_road_assumption, :accepted, :parameters_json
+        )
+        """,
+        run,
+    )
+
+
+def insert_calibration_points(connection: sqlite3.Connection, points: Iterable[dict[str, object]]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO calibration_points (
+            calibration_point_id, calibration_id, role, image_x, image_y, world_x, world_y
+        ) VALUES (
+            :calibration_point_id, :calibration_id, :role, :image_x, :image_y, :world_x, :world_y
+        )
+        """,
+        points,
+    )
+
+
+def fetch_calibration_run_by_id(connection: sqlite3.Connection, calibration_id: str) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT calibration_id, run_id, video_id, method, point_count,
+               held_out_point_count, reprojection_error_m_mean, reprojection_error_m_max,
+               distortion_checked, flat_road_assumption, accepted, parameters_json
+        FROM calibration_runs
+        WHERE calibration_id = ?
+        """,
+        (calibration_id,),
+    ).fetchone()
+
+
+def fetch_calibration_points_for_run(connection: sqlite3.Connection, calibration_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT calibration_point_id, calibration_id, role, image_x, image_y, world_x, world_y
+        FROM calibration_points
+        WHERE calibration_id = ?
+        ORDER BY calibration_point_id ASC
+        """,
+        (calibration_id,),
+    ).fetchall()
+
+
+def fetch_calibration_runs_for_video(connection: sqlite3.Connection, video_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT calibration_id, run_id, video_id, method, point_count,
+               held_out_point_count, reprojection_error_m_mean, reprojection_error_m_max,
+               distortion_checked, flat_road_assumption, accepted, parameters_json
+        FROM calibration_runs
+        WHERE video_id = ?
+        ORDER BY calibration_id ASC
+        """,
+        (video_id,),
+    ).fetchall()
+
+
+def fetch_latest_accepted_calibration(connection: sqlite3.Connection, video_id: str) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT calibration_id, run_id, video_id, method, point_count,
+               held_out_point_count, reprojection_error_m_mean, reprojection_error_m_max,
+               distortion_checked, flat_road_assumption, accepted, parameters_json
+        FROM calibration_runs
+        WHERE video_id = ? AND accepted = 1
+        ORDER BY rowid DESC
+        LIMIT 1
+        """,
+        (video_id,),
+    ).fetchone()
+
+

@@ -71,6 +71,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "west": {"east": "through", "south": "right", "north": "left", "west": "u_turn"},
         },
     },
+    "calibration": {
+        "method": "planar_homography",
+        "min_points": 6,
+        "held_out_count": 2,
+        "max_reprojection_error_m": 1.0,
+        "distortion_check_enabled": False,
+        "flat_road_assumption": True,
+        "coordinate_unit": "meter",
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -196,6 +205,32 @@ def _validate(config: Mapping[str, Any]) -> None:
         mapping = counting.get("movement_mapping")
         if mapping is not None and not isinstance(mapping, Mapping):
             raise ConfigError("counting.movement_mapping must be a mapping")
+    calibration = config.get("calibration")
+    if calibration is not None:
+        if not isinstance(calibration, Mapping):
+            raise ConfigError("calibration must be a mapping")
+        if calibration.get("method") != "planar_homography":
+            raise ConfigError("Phase 07 requires calibration.method to be 'planar_homography'")
+        min_pts = calibration.get("min_points")
+        if not (isinstance(min_pts, int) and min_pts >= 6):
+            raise ConfigError("calibration.min_points must be an integer >= 6")
+        held_out = calibration.get("held_out_count")
+        if not (isinstance(held_out, int) and held_out >= 1):
+            raise ConfigError("calibration.held_out_count must be an integer >= 1")
+        if min_pts - held_out < 4:
+            raise ConfigError("calibration fit points (min_points - held_out_count) must be at least 4")
+        max_err = calibration.get("max_reprojection_error_m")
+        if not (isinstance(max_err, (int, float)) and max_err > 0):
+            raise ConfigError("calibration.max_reprojection_error_m must be a positive number")
+        distortion = calibration.get("distortion_check_enabled")
+        if distortion is not None and not isinstance(distortion, bool):
+            raise ConfigError("calibration.distortion_check_enabled must be a boolean")
+        flat_road = calibration.get("flat_road_assumption")
+        if flat_road is not True:
+            raise ConfigError("Phase 07 requires calibration.flat_road_assumption to be True")
+        unit = calibration.get("coordinate_unit")
+        if not isinstance(unit, str) or not unit.strip():
+            raise ConfigError("calibration.coordinate_unit must be a non-empty string")
 
 
 def load_config(path: Path | None = None, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
