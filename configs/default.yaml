@@ -95,4 +95,12 @@ calibration:
   distortion_check_enabled: false
   flat_road_assumption: true
   coordinate_unit: meter
+speed:
+  smoothing_method: moving_average
+  smoothing_window_s: 0.5
+  min_track_points: 3
+  max_gap_seconds: 1.0
+  min_displacement_m: 0.1
+  max_plausible_speed_mps: 45.0
+  ground_point_method: bottom_center
 

@@ -97,3 +97,18 @@ Phase 01 owns only the minimal API/frontend skeleton needed to establish reposit
   - `observed_duration_s`: actual observed duration in seconds within the bin. Truncated or partial final bins retain their actual observed elapsed time.
   - `extrapolated_vehicles_per_hour`: extrapolated rate `count * 3600 / observed_duration_s`. `NULL` when `observed_duration_s == 0`.
 
+## Phase 08 speed observations
+
+- `speed_observations`: canonical vehicle speed observations in calibrated physical units.
+  - `speed_observation_id`: stable text primary key (UUID).
+  - `run_id`: foreign key referencing `processing_runs(run_id)`.
+  - `video_id`: foreign key referencing `videos(video_id)`.
+  - `track_id`: integer vehicle track identifier.
+  - `timestamp_s`: authoritative media timestamp from source timeline.
+  - `speed_mps`: speed in metres per second, or NULL when status is not 'valid'.
+  - `speed_kmh`: speed in kilometres per hour (`speed_mps * 3.6`), or NULL when status is not 'valid'.
+  - `calibration_id`: foreign key referencing accepted `calibration_runs(calibration_id)`.
+  - `status`: observation status, one of `'valid'`, `'invalid'`, or `'unavailable'`.
+  - `smoothing_window`: temporal smoothing window duration in seconds.
+  - `ground_point_method`: method used for road contact point projection (`'bottom_center'`).
+

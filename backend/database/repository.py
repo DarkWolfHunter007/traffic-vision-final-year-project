@@ -512,3 +512,103 @@ def fetch_latest_accepted_calibration(connection: sqlite3.Connection, video_id: 
     ).fetchone()
 
 
+def insert_speed_observations(connection: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO speed_observations (
+            speed_observation_id, run_id, video_id, track_id, timestamp_s,
+            speed_mps, speed_kmh, calibration_id, status, smoothing_window,
+            ground_point_method
+        ) VALUES (
+            :speed_observation_id, :run_id, :video_id, :track_id, :timestamp_s,
+            :speed_mps, :speed_kmh, :calibration_id, :status, :smoothing_window,
+            :ground_point_method
+        )
+        """,
+        rows,
+    )
+
+
+def fetch_speed_observations_for_run(
+    connection: sqlite3.Connection, run_id: str, track_id: int | None = None
+) -> list[sqlite3.Row]:
+    if track_id is not None:
+        return connection.execute(
+            """
+            SELECT speed_observation_id, run_id, video_id, track_id, timestamp_s,
+                   speed_mps, speed_kmh, calibration_id, status, smoothing_window,
+                   ground_point_method
+            FROM speed_observations
+            WHERE run_id = ? AND track_id = ?
+            ORDER BY timestamp_s ASC
+            """,
+            (run_id, track_id),
+        ).fetchall()
+    return connection.execute(
+        """
+        SELECT speed_observation_id, run_id, video_id, track_id, timestamp_s,
+               speed_mps, speed_kmh, calibration_id, status, smoothing_window,
+               ground_point_method
+        FROM speed_observations
+        WHERE run_id = ?
+        ORDER BY track_id ASC, timestamp_s ASC
+        """,
+        (run_id,),
+    ).fetchall()
+
+
+def fetch_speed_observation_stats(connection: sqlite3.Connection, run_id: str) -> dict[str, object]:
+    row = connection.execute(
+        """
+        SELECT
+            COUNT(*) as total_count,
+            SUM(CASE WHEN status = 'valid' THEN 1 ELSE 0 END) as valid_count,
+            SUM(CASE WHEN status = 'unavailable' THEN 1 ELSE 0 END) as unavailable_count,
+            SUM(CASE WHEN status = 'invalid' THEN 1 ELSE 0 END) as invalid_count,
+            AVG(CASE WHEN status = 'valid' THEN speed_kmh ELSE NULL END) as mean_speed_kmh,
+            MAX(CASE WHEN status = 'valid' THEN speed_kmh ELSE NULL END) as max_speed_kmh,
+            AVG(CASE WHEN status = 'valid' THEN speed_mps ELSE NULL END) as mean_speed_mps,
+            MAX(CASE WHEN status = 'valid' THEN speed_mps ELSE NULL END) as max_speed_mps
+        FROM speed_observations
+        WHERE run_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+
+    if row is None:
+        return {
+            "total_count": 0,
+            "valid_count": 0,
+            "unavailable_count": 0,
+            "invalid_count": 0,
+            "mean_speed_kmh": None,
+            "max_speed_kmh": None,
+            "mean_speed_mps": None,
+            "max_speed_mps": None,
+        }
+
+    return {
+        "total_count": int(row["total_count"] or 0),
+        "valid_count": int(row["valid_count"] or 0),
+        "unavailable_count": int(row["unavailable_count"] or 0),
+        "invalid_count": int(row["invalid_count"] or 0),
+        "mean_speed_kmh": round(float(row["mean_speed_kmh"]), 2) if row["mean_speed_kmh"] is not None else None,
+        "max_speed_kmh": round(float(row["max_speed_kmh"]), 2) if row["max_speed_kmh"] is not None else None,
+        "mean_speed_mps": round(float(row["mean_speed_mps"]), 2) if row["mean_speed_mps"] is not None else None,
+        "max_speed_mps": round(float(row["max_speed_mps"]), 2) if row["max_speed_mps"] is not None else None,
+    }
+
+
+def update_tracks_world_coordinates(
+    connection: sqlite3.Connection, updates: Iterable[dict[str, object]]
+) -> None:
+    connection.executemany(
+        """
+        UPDATE tracks
+        SET world_x = :world_x, world_y = :world_y, calibration_id = :calibration_id
+        WHERE track_observation_id = :track_observation_id
+        """,
+        updates,
+    )
+
+

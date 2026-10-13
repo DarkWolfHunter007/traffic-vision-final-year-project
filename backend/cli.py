@@ -29,6 +29,10 @@ from backend.services.visualization import (
     render_preview_visualization,
     render_video_visualization,
 )
+from backend.services.speed import (
+    get_speed_observations,
+    run_speed_estimation,
+)
 from backend.structured_logging import configure_logging
 
 
@@ -86,6 +90,15 @@ def build_parser() -> argparse.ArgumentParser:
     show_calib = commands.add_parser("show-calibration", help="Inspect an existing calibration run and its diagnostics")
     show_calib.add_argument("calibration_id", help="Calibration ID")
     show_calib.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    estimate_spd = commands.add_parser("estimate-speed", help="Run calibrated speed estimation for a tracking parent run")
+    estimate_spd.add_argument("parent_run_id", help="Parent tracking processing run ID")
+    estimate_spd.add_argument("--calibration-id", default=None, help="Optional accepted calibration ID")
+    estimate_spd.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    show_spd = commands.add_parser("show-speed", help="Inspect speed observations for a speed run")
+    show_spd.add_argument("run_id", help="Speed estimation processing run ID")
+    show_spd.add_argument("--track-id", type=int, default=None, help="Optional track ID filter")
+    show_spd.add_argument("--limit", type=int, default=None, help="Optional maximum rows to return")
+    show_spd.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
 
 
@@ -221,6 +234,25 @@ def main() -> None:
         if calib is None:
             raise SystemExit(f"Calibration '{args.calibration_id}' not found")
         print(json.dumps(calib, sort_keys=True))
+        return
+    if args.command == "estimate-speed":
+        result = run_speed_estimation(
+            args.parent_run_id,
+            calibration_id=args.calibration_id,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "show-speed":
+        result = get_speed_observations(
+            args.run_id,
+            track_id=args.track_id,
+            limit=args.limit,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
         return
     result = ingest_video(
         args.video,

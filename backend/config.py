@@ -80,6 +80,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "flat_road_assumption": True,
         "coordinate_unit": "meter",
     },
+    "speed": {
+        "smoothing_method": "moving_average",
+        "smoothing_window_s": 0.5,
+        "min_track_points": 3,
+        "max_gap_seconds": 1.0,
+        "min_displacement_m": 0.1,
+        "max_plausible_speed_mps": 45.0,
+        "ground_point_method": "bottom_center",
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -231,6 +240,31 @@ def _validate(config: Mapping[str, Any]) -> None:
         unit = calibration.get("coordinate_unit")
         if not isinstance(unit, str) or not unit.strip():
             raise ConfigError("calibration.coordinate_unit must be a non-empty string")
+    speed = config.get("speed")
+    if speed is not None:
+        if not isinstance(speed, Mapping):
+            raise ConfigError("speed must be a mapping")
+        smoothing_method = speed.get("smoothing_method")
+        if smoothing_method not in {"moving_average", "none"}:
+            raise ConfigError("speed.smoothing_method must be either 'moving_average' or 'none'")
+        window_s = speed.get("smoothing_window_s")
+        if not (isinstance(window_s, (int, float)) and window_s >= 0):
+            raise ConfigError("speed.smoothing_window_s must be a non-negative number")
+        min_pts = speed.get("min_track_points")
+        if not (isinstance(min_pts, int) and min_pts >= 2):
+            raise ConfigError("speed.min_track_points must be an integer >= 2")
+        max_gap = speed.get("max_gap_seconds")
+        if not (isinstance(max_gap, (int, float)) and max_gap > 0):
+            raise ConfigError("speed.max_gap_seconds must be a positive number")
+        min_disp = speed.get("min_displacement_m")
+        if not (isinstance(min_disp, (int, float)) and min_disp >= 0):
+            raise ConfigError("speed.min_displacement_m must be a non-negative number")
+        max_speed = speed.get("max_plausible_speed_mps")
+        if not (isinstance(max_speed, (int, float)) and max_speed > 0):
+            raise ConfigError("speed.max_plausible_speed_mps must be a positive number")
+        ground_method = speed.get("ground_point_method")
+        if ground_method != "bottom_center":
+            raise ConfigError("Phase 08 requires speed.ground_point_method to be 'bottom_center'")
 
 
 def load_config(path: Path | None = None, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
