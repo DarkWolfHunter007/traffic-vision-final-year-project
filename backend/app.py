@@ -32,6 +32,27 @@ from backend.services.evaluation import (
     register_model,
     select_production_model,
 )
+from fastapi.staticfiles import StaticFiles
+from backend.services.export import export_run, get_export_manifest
+from backend.services.dashboard import (
+    get_dashboard_ground_truth,
+    get_dashboard_queue_summary,
+    get_dashboard_review_status,
+    get_dashboard_run_summary,
+    get_dashboard_runs,
+    get_dashboard_speed_summary,
+    get_dashboard_tracking_quality,
+    get_dashboard_video_metadata,
+    get_dashboard_volume_bins,
+)
+
+FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
+
+
+class ExportRunRequest(BaseModel):
+    output_dir: str | None = None
+    format: str = "all"
+    include_raw: bool = True
 
 
 
@@ -329,6 +350,95 @@ def create_app() -> FastAPI:
             return select_production_model(model_version=request.model_version)
         except EvaluationError as err:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err))
+
+    # Phase 13 Dashboard and Export Endpoints
+
+    @app.get("/api/runs")
+    @app.get("/runs")
+    def list_runs_endpoint() -> list[dict[str, Any]]:
+        return get_dashboard_runs()
+
+    @app.get("/api/runs/{run_id}/summary")
+    @app.get("/runs/{run_id}/summary")
+    def get_run_summary_endpoint(run_id: str) -> dict[str, Any]:
+        try:
+            return get_dashboard_run_summary(run_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    @app.get("/api/runs/{run_id}/volume-bins")
+    @app.get("/runs/{run_id}/volume-bins")
+    def get_run_volume_bins_endpoint(run_id: str) -> dict[str, Any]:
+        try:
+            return get_dashboard_volume_bins(run_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    @app.get("/api/runs/{run_id}/tracking-quality")
+    @app.get("/runs/{run_id}/tracking-quality")
+    def get_run_tracking_quality_endpoint(run_id: str) -> dict[str, Any]:
+        try:
+            return get_dashboard_tracking_quality(run_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    @app.get("/api/runs/{run_id}/review-status")
+    @app.get("/runs/{run_id}/review-status")
+    def get_run_review_status_endpoint(run_id: str) -> dict[str, Any]:
+        try:
+            return get_dashboard_review_status(run_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    @app.get("/api/runs/{run_id}/speed-summary")
+    @app.get("/runs/{run_id}/speed-summary")
+    def get_run_speed_summary_endpoint(run_id: str) -> dict[str, Any]:
+        try:
+            return get_dashboard_speed_summary(run_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    @app.get("/api/runs/{run_id}/queue-summary")
+    @app.get("/runs/{run_id}/queue-summary")
+    def get_run_queue_summary_endpoint(run_id: str) -> dict[str, Any]:
+        try:
+            return get_dashboard_queue_summary(run_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    @app.get("/api/runs/{run_id}/video-metadata")
+    @app.get("/runs/{run_id}/video-metadata")
+    def get_run_video_metadata_endpoint(run_id: str) -> dict[str, Any]:
+        try:
+            return get_dashboard_video_metadata(run_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    @app.get("/api/runs/{run_id}/ground-truth")
+    @app.get("/runs/{run_id}/ground-truth")
+    def get_run_ground_truth_endpoint(run_id: str) -> dict[str, Any]:
+        try:
+            return get_dashboard_ground_truth(run_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    @app.post("/api/runs/{run_id}/export")
+    @app.post("/runs/{run_id}/export")
+    def trigger_run_export_endpoint(run_id: str, request: ExportRunRequest | None = None) -> dict[str, Any]:
+        try:
+            req = request or ExportRunRequest()
+            return export_run(
+                run_id=run_id,
+                output_dir=req.output_dir,
+                export_format=req.format,
+                include_raw=req.include_raw,
+            )
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    # Mount static frontend at root, preserving explicit API and health routes
+    if FRONTEND_DIR.is_dir():
+        app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
     return app
 

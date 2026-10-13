@@ -137,6 +137,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "counting_tolerance_pct": 10.0,
         "output_dir": "data/processed/evaluations",
     },
+    "export": {
+        "output_dir": "data/processed/exports",
+        "formats": ["csv", "json", "sqlite"],
+        "default_format": "all",
+        "include_raw_events": True,
+    },
+    "dashboard": {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "summary_interval_s": 900.0,
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -427,6 +438,38 @@ def _validate(config: Mapping[str, Any]) -> None:
         out_dir = ev.get("output_dir")
         if not isinstance(out_dir, str) or not out_dir.strip():
             raise ConfigError("evaluation.output_dir must be a non-empty string")
+    exp = config.get("export")
+    if exp is not None:
+        if not isinstance(exp, Mapping):
+            raise ConfigError("export must be a mapping")
+        out_dir = exp.get("output_dir")
+        if not isinstance(out_dir, str) or not out_dir.strip():
+            raise ConfigError("export.output_dir must be a non-empty string")
+        formats = exp.get("formats")
+        allowed_formats = {"csv", "json", "sqlite"}
+        if not isinstance(formats, (list, tuple)) or not formats:
+            raise ConfigError("export.formats must be a non-empty list of format strings")
+        for fmt in formats:
+            if fmt not in allowed_formats:
+                raise ConfigError(f"export.formats contains invalid format '{fmt}'; allowed: {sorted(allowed_formats)}")
+        def_fmt = exp.get("default_format")
+        if def_fmt not in {"all", "csv", "json", "sqlite"}:
+            raise ConfigError("export.default_format must be one of 'all', 'csv', 'json', 'sqlite'")
+        if "include_raw_events" in exp and not isinstance(exp["include_raw_events"], bool):
+            raise ConfigError("export.include_raw_events must be a boolean")
+    dash = config.get("dashboard")
+    if dash is not None:
+        if not isinstance(dash, Mapping):
+            raise ConfigError("dashboard must be a mapping")
+        host = dash.get("host")
+        if not isinstance(host, str) or not host.strip():
+            raise ConfigError("dashboard.host must be a non-empty string")
+        port = dash.get("port")
+        if not (isinstance(port, int) and 1 <= port <= 65535):
+            raise ConfigError("dashboard.port must be an integer between 1 and 65535")
+        interval = dash.get("summary_interval_s")
+        if not (isinstance(interval, (int, float)) and interval > 0):
+            raise ConfigError("dashboard.summary_interval_s must be a positive number")
 
 
 

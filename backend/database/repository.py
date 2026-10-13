@@ -1037,3 +1037,312 @@ def set_production_model_version(
         (model_version,),
     )
 
+
+def fetch_all_runs(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT run_id, parent_run_id, video_id, model_version, config_hash,
+               schema_version, code_version, source_video_sha256,
+               started_at, completed_at, status, notes
+        FROM processing_runs
+        ORDER BY started_at DESC, run_id DESC
+        """
+    ).fetchall()
+
+
+def fetch_video_for_run(connection: sqlite3.Connection, run_id: str) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT v.video_id, v.filename, v.path, v.sha256, v.fps_nominal,
+               v.width, v.height, v.duration_s, v.frame_count,
+               v.variable_frame_rate, v.wall_clock_start, v.ingested_at, v.metadata_json
+        FROM videos v
+        JOIN processing_runs r ON v.video_id = r.video_id
+        WHERE r.run_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+
+
+def fetch_tracking_quality_stats(connection: sqlite3.Connection, run_id: str) -> dict[str, object]:
+    target_run_id = run_id
+    row_count = connection.execute(
+        "SELECT COUNT(*) FROM tracks WHERE run_id = ?", (target_run_id,)
+    ).fetchone()[0]
+    if row_count == 0:
+        parent = connection.execute(
+            "SELECT parent_run_id FROM processing_runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if parent and parent["parent_run_id"]:
+            p_count = connection.execute(
+                "SELECT COUNT(*) FROM tracks WHERE run_id = ?", (parent["parent_run_id"],)
+            ).fetchone()[0]
+            if p_count > 0:
+                target_run_id = parent["parent_run_id"]
+
+    row = connection.execute(
+        """
+        SELECT
+            COUNT(*) as total_observations,
+            COUNT(DISTINCT track_id) as total_tracks,
+            SUM(CASE WHEN trajectory_status = 'complete' THEN 1 ELSE 0 END) as complete_count,
+            SUM(CASE WHEN trajectory_status = 'active' THEN 1 ELSE 0 END) as active_count,
+            SUM(CASE WHEN trajectory_status = 'fragmented' THEN 1 ELSE 0 END) as fragmented_count,
+            SUM(CASE WHEN trajectory_status = 'invalid' THEN 1 ELSE 0 END) as invalid_count,
+            SUM(CASE WHEN world_x IS NOT NULL THEN 1 ELSE 0 END) as calibrated_points_count
+        FROM tracks
+        WHERE run_id = ?
+        """,
+        (target_run_id,),
+    ).fetchone()
+    total_obs = int(row["total_observations"] or 0)
+    return {
+        "target_run_id": target_run_id,
+        "total_observations": total_obs,
+        "total_tracks": int(row["total_tracks"] or 0),
+        "trajectory_status_counts": {
+            "complete": int(row["complete_count"] or 0),
+            "active": int(row["active_count"] or 0),
+            "fragmented": int(row["fragmented_count"] or 0),
+            "invalid": int(row["invalid_count"] or 0),
+        },
+        "calibrated_points_count": int(row["calibrated_points_count"] or 0),
+    }
+
+
+def fetch_run_export_data(
+    connection: sqlite3.Connection, run_id: str, include_raw: bool = True
+) -> dict[str, object] | None:
+    run_row = fetch_run_by_id(connection, run_id)
+    if run_row is None:
+        return None
+    run_dict = dict(run_row)
+
+    video_row = fetch_video_for_run(connection, run_id)
+    video_dict = dict(video_row) if video_row else None
+    video_id = video_dict["video_id"] if video_dict else run_dict.get("video_id")
+
+    # Find related lineage runs to assemble full cross-phase results
+    related_run_ids = [run_id]
+    if run_dict.get("parent_run_id"):
+        parent_id = run_dict["parent_run_id"]
+        if parent_id not in related_run_ids:
+            related_run_ids.append(parent_id)
+        # Sibling runs
+        siblings = connection.execute(
+            "SELECT run_id FROM processing_runs WHERE parent_run_id = ?", (parent_id,)
+        ).fetchall()
+        for sib in siblings:
+            if sib["run_id"] not in related_run_ids:
+                related_run_ids.append(sib["run_id"])
+    children = connection.execute(
+        "SELECT run_id FROM processing_runs WHERE parent_run_id = ?", (run_id,)
+    ).fetchall()
+    for ch in children:
+        if ch["run_id"] not in related_run_ids:
+            related_run_ids.append(ch["run_id"])
+
+    # 1. Volume bins
+    bins_rows = connection.execute(
+        f"""
+        SELECT bin_id, run_id, video_id, line_id, bin_start_s, bin_duration_s,
+               observed_duration_s, vehicle_class, approach, movement, count,
+               extrapolated_vehicles_per_hour
+        FROM traffic_volume_bins
+        WHERE run_id IN ({','.join('?' for _ in related_run_ids)})
+        ORDER BY bin_start_s ASC, line_id ASC, vehicle_class ASC
+        """,
+        related_run_ids,
+    ).fetchall()
+    volume_bins = [dict(r) for r in bins_rows]
+
+    # 2. Crossing events (if included)
+    crossings = []
+    if include_raw:
+        crossing_rows = connection.execute(
+            f"""
+            SELECT crossing_event_id, run_id, video_id, line_id, track_id,
+                   frame_number, timestamp_s, vehicle_class, direction, approach,
+                   movement, line_config_version, deduplicated
+            FROM crossing_events
+            WHERE run_id IN ({','.join('?' for _ in related_run_ids)})
+            ORDER BY timestamp_s ASC, crossing_event_id ASC
+            """,
+            related_run_ids,
+        ).fetchall()
+        crossings = [dict(r) for r in crossing_rows]
+
+    # 3. Speed observations
+    speed_rows = connection.execute(
+        f"""
+        SELECT speed_observation_id, run_id, video_id, track_id, timestamp_s,
+               speed_mps, speed_kmh, calibration_id, status, smoothing_window,
+               ground_point_method
+        FROM speed_observations
+        WHERE run_id IN ({','.join('?' for _ in related_run_ids)})
+        ORDER BY timestamp_s ASC, track_id ASC
+        """,
+        related_run_ids,
+    ).fetchall()
+    speed_observations = [dict(r) for r in speed_rows]
+
+    # Speed summary stats
+    speed_stats = {
+        "total_observations": 0,
+        "total_count": 0,
+        "valid_count": 0,
+        "invalid_count": 0,
+        "unavailable_count": 0,
+        "mean_speed_kmh": None,
+        "max_speed_kmh": None,
+        "mean_speed_mps": None,
+        "max_speed_mps": None,
+    }
+    for rid in related_run_ids:
+        s_stats = fetch_speed_observation_stats(connection, rid)
+        if s_stats.get("total_count", 0) > 0:
+            speed_stats = dict(s_stats)
+            speed_stats["total_observations"] = s_stats["total_count"]
+            break
+
+    # 4. Stop events
+    stop_rows = connection.execute(
+        f"""
+        SELECT stop_event_id, run_id, video_id, track_id, start_timestamp_s,
+               end_timestamp_s, duration_s, threshold_kmh, status
+        FROM stop_events
+        WHERE run_id IN ({','.join('?' for _ in related_run_ids)})
+        ORDER BY start_timestamp_s ASC, track_id ASC
+        """,
+        related_run_ids,
+    ).fetchall()
+    stop_events = [dict(r) for r in stop_rows]
+
+    # 5. Queue events
+    queue_rows = connection.execute(
+        f"""
+        SELECT queue_event_id, run_id, video_id, zone_id, approach, timestamp_s,
+               queue_length_m, queued_vehicle_count, status
+        FROM queue_events
+        WHERE run_id IN ({','.join('?' for _ in related_run_ids)})
+        ORDER BY timestamp_s ASC
+        """,
+        related_run_ids,
+    ).fetchall()
+    queue_events = [dict(r) for r in queue_rows]
+
+    # Queue summary stats
+    raw_q_stats = {
+        "total_stops": 0,
+        "valid_stops": 0,
+        "mean_stop_duration_s": None,
+        "max_stop_duration_s": None,
+        "total_queue_events": 0,
+        "valid_queue_events": 0,
+        "formed_queue_events": 0,
+        "mean_queue_length_m": None,
+        "max_queue_length_m": None,
+        "max_queued_vehicles": 0,
+    }
+    for rid in related_run_ids:
+        q_s = fetch_queue_detection_stats(connection, rid)
+        if q_s.get("total_stops", 0) > 0 or q_s.get("total_queue_events", 0) > 0:
+            raw_q_stats = q_s
+            break
+
+    queue_stats = {
+        **raw_q_stats,
+        "stops": {
+            "total": raw_q_stats.get("total_stops", 0),
+            "valid_stops": raw_q_stats.get("valid_stops", 0),
+            "mean_duration_s": raw_q_stats.get("mean_stop_duration_s"),
+            "max_duration_s": raw_q_stats.get("max_stop_duration_s"),
+        },
+        "queues": {
+            "total": raw_q_stats.get("total_queue_events", 0),
+            "valid_queues": raw_q_stats.get("valid_queue_events", 0),
+            "formed_queues": raw_q_stats.get("formed_queue_events", 0),
+            "mean_queue_length_m": raw_q_stats.get("mean_queue_length_m"),
+            "max_queue_length_m": raw_q_stats.get("max_queue_length_m"),
+            "max_queued_vehicles": raw_q_stats.get("max_queued_vehicles"),
+        },
+    }
+
+    # 6. Manual reviews
+    rev_rows = connection.execute(
+        f"""
+        SELECT review_id, run_id, video_id, track_id, detection_id, frame_number,
+               timestamp_s, original_class, corrected_class, original_bbox_json,
+               corrected_bbox_json, reason, review_status, reviewer, reviewed_at,
+               snippet_path
+        FROM manual_reviews
+        WHERE run_id IN ({','.join('?' for _ in related_run_ids)}) OR video_id = ?
+        ORDER BY timestamp_s ASC, review_id ASC
+        """,
+        [*related_run_ids, video_id],
+    ).fetchall()
+    manual_reviews = [dict(r) for r in rev_rows]
+
+    review_stats = fetch_manual_review_stats(connection, run_id)
+    if review_stats["total_reviews"] == 0 and video_id:
+        v_rev_stats = connection.execute(
+            """
+            SELECT
+                COUNT(*) as total_reviews,
+                SUM(CASE WHEN review_status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+                SUM(CASE WHEN review_status = 'approved' THEN 1 ELSE 0 END) as approved_count,
+                SUM(CASE WHEN review_status = 'rejected' THEN 1 ELSE 0 END) as rejected_count,
+                SUM(CASE WHEN corrected_class IS NOT NULL THEN 1 ELSE 0 END) as class_corrected_count,
+                SUM(CASE WHEN corrected_bbox_json IS NOT NULL THEN 1 ELSE 0 END) as bbox_corrected_count,
+                SUM(CASE WHEN snippet_path IS NOT NULL THEN 1 ELSE 0 END) as snippet_count
+            FROM manual_reviews
+            WHERE video_id = ?
+            """,
+            (video_id,),
+        ).fetchone()
+        if v_rev_stats and v_rev_stats["total_reviews"]:
+            review_stats = {
+                "total_reviews": int(v_rev_stats["total_reviews"] or 0),
+                "pending_count": int(v_rev_stats["pending_count"] or 0),
+                "approved_count": int(v_rev_stats["approved_count"] or 0),
+                "rejected_count": int(v_rev_stats["rejected_count"] or 0),
+                "class_corrected_count": int(v_rev_stats["class_corrected_count"] or 0),
+                "bbox_corrected_count": int(v_rev_stats["bbox_corrected_count"] or 0),
+                "snippet_count": int(v_rev_stats["snippet_count"] or 0),
+            }
+
+    # 7. Tracking quality
+    tracking_quality = fetch_tracking_quality_stats(connection, run_id)
+
+    # 8. Calibration
+    cal_row = connection.execute(
+        """
+        SELECT calibration_id, run_id, video_id, method, point_count,
+               held_out_point_count, reprojection_error_m_mean,
+               reprojection_error_m_max, distortion_checked,
+               flat_road_assumption, accepted, parameters_json
+        FROM calibration_runs
+        WHERE video_id = ?
+        ORDER BY accepted DESC, reprojection_error_m_mean ASC
+        LIMIT 1
+        """,
+        (video_id,),
+    ).fetchone()
+    calibration = dict(cal_row) if cal_row else None
+
+    return {
+        "run": run_dict,
+        "video": video_dict,
+        "traffic_volume_bins": volume_bins,
+        "crossing_events": crossings,
+        "speed_observations": speed_observations,
+        "stop_events": stop_events,
+        "queue_events": queue_events,
+        "manual_reviews": manual_reviews,
+        "tracking_quality": tracking_quality,
+        "speed_stats": speed_stats,
+        "queue_stats": queue_stats,
+        "review_stats": review_stats,
+        "calibration": calibration,
+    }
+

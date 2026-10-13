@@ -161,6 +161,18 @@ evaluation:
   held_out_split: val
   counting_tolerance_pct: 10.0
   output_dir: data/processed/evaluations
+export:
+  output_dir: data/processed/exports
+  formats:
+    - csv
+    - json
+    - sqlite
+  default_format: all
+  include_raw_events: true
+dashboard:
+  host: "127.0.0.1"
+  port: 8000
+  summary_interval_s: 900.0
 
 
 

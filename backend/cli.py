@@ -58,6 +58,13 @@ from backend.services.evaluation import (
     register_model,
     select_production_model,
 )
+from backend.services.export import (
+    export_run,
+    get_export_manifest,
+)
+from backend.services.dashboard import (
+    get_dashboard_run_summary,
+)
 from backend.structured_logging import configure_logging
 
 
@@ -235,6 +242,21 @@ def build_parser() -> argparse.ArgumentParser:
     show_mod = commands.add_parser("show-model", help="Show model metadata and evaluations")
     show_mod.add_argument("model_version", help="Model version identifier")
     show_mod.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    export_cmd = commands.add_parser("export", help="Export processing run data in CSV, JSON, and SQLite formats")
+    export_cmd.add_argument("run_id", help="Processing run ID to export")
+    export_cmd.add_argument("--output-dir", type=Path, default=None, help="Target export directory")
+    export_cmd.add_argument("--format", default="all", choices=["all", "csv", "json", "sqlite"], help="Export format")
+    export_cmd.add_argument("--no-raw", action="store_true", help="Exclude raw crossing events from export")
+    export_cmd.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    show_export_man = commands.add_parser("show-export-manifest", help="Inspect an exported run manifest")
+    show_export_man.add_argument("path", type=Path, help="Manifest file or export directory path")
+    show_export_man.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    dash_summary = commands.add_parser("dashboard-summary", help="Retrieve aggregate dashboard summary for a run")
+    dash_summary.add_argument("run_id", help="Processing run ID")
+    dash_summary.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
 
 
@@ -586,6 +608,30 @@ def main() -> None:
             repository_root=REPOSITORY_ROOT,
         )
         print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "export":
+        result = export_run(
+            run_id=args.run_id,
+            output_dir=args.output_dir,
+            export_format=args.format,
+            include_raw=not args.no_raw,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "show-export-manifest":
+        manifest_path = args.path if args.path.is_file() else args.path / "manifest.json"
+        manifest_data = get_export_manifest(manifest_path)
+        print(json.dumps(manifest_data, sort_keys=True))
+        return
+    if args.command == "dashboard-summary":
+        summary = get_dashboard_run_summary(
+            run_id=args.run_id,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(summary, sort_keys=True))
         return
 
     result = ingest_video(
