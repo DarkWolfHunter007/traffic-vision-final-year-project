@@ -134,6 +134,9 @@ def _validate(config: Mapping[str, Any]) -> None:
         chunk_frames = tracking.get("chunk_frames")
         if chunk_frames is not None and not (isinstance(chunk_frames, int) and chunk_frames >= 1):
             raise ConfigError("tracking.chunk_frames must be an integer >= 1")
+        batch_size = tracking.get("batch_size")
+        if batch_size is not None and not (isinstance(batch_size, int) and batch_size >= 1):
+            raise ConfigError("tracking.batch_size must be an integer >= 1")
     trajectories = config.get("trajectories")
     if trajectories is not None:
         if not isinstance(trajectories, Mapping):

@@ -157,8 +157,10 @@ Focused test files:
 
 ---
 
-## 7. Assumptions & Known Limitations
+## 7. Known Limitations & Assumptions
 
+- **Track Status in DB**: `tracks.trajectory_status` is always the placeholder `'complete'` in the DB and real status must come from `build_trajectories()`. Downstream consumers must not query or rely on `tracks.trajectory_status` directly from the database.
+- **GPU OOM Behavior**: `gpu_oom_behavior` in `configs/default.yaml` is a placeholder not implemented.
 - **Software Fixtures**: Synthetic fixtures validate geometric invariants, memory streaming, and error handling. Real Pattom CCTV footage will be ingested in field validation.
 - **Physical vs Diagnostic Fragmentation**: Temporal gaps and interior disappearances are heuristics for potential fragmentation. Physical identity switches cannot be proven without manual ground truth.
 - **Occlusion Trail Continuity**: Trajectory trails only connect observed points; they do not draw synthetic interpolation lines across missing frames.

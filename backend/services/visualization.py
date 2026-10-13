@@ -45,16 +45,12 @@ def build_run_trajectories(
     # Determine frame_stride from config, run lineage, or parent run lineage
     frame_stride = 1
     if config:
-        frame_stride = int(
-            config.get("trajectories", {}).get("frame_stride")
-            or config.get("detection", {}).get("frame_stride", 1)
-        )
+        frame_stride = int(config.get("detection", {}).get("frame_stride", 1))
     if frame_stride == 1 and run["config_json"]:
         try:
             rc = json.loads(run["config_json"])
             frame_stride = int(
-                rc.get("trajectories", {}).get("frame_stride")
-                or rc.get("detection", {}).get("frame_stride")
+                rc.get("detection", {}).get("frame_stride")
                 or rc.get("tracking", {}).get("frame_stride", 1)
             )
         except Exception:

@@ -8,6 +8,8 @@ from typing import Protocol, Sequence
 
 import numpy as np
 
+from backend.geometry import compute_ground_point
+
 
 class DetectionError(ValueError):
     """Raised when a detection configuration or model output is invalid."""
@@ -55,11 +57,11 @@ class Detection:
 
     @property
     def ground_x(self) -> float:
-        return (self.x1 + self.x2) / 2
+        return compute_ground_point(self.x1, self.y1, self.x2, self.y2)[0]
 
     @property
     def ground_y(self) -> float:
-        return self.y2
+        return compute_ground_point(self.x1, self.y1, self.x2, self.y2)[1]
 
 
 @dataclass(frozen=True)

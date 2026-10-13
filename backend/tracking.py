@@ -9,6 +9,7 @@ from typing import Any, Protocol, Sequence
 import numpy as np
 
 from backend.detection import Detection
+from backend.geometry import compute_ground_point
 
 
 class TrackingError(ValueError):
@@ -156,8 +157,7 @@ class ByteTrackerAdapter:
                 else:
                     class_name = "unknown"
 
-                ground_x = float((x1 + x2) / 2.0)
-                ground_y = float(y2)
+                ground_x, ground_y = compute_ground_point(float(x1), float(y1), float(x2), float(y2))
                 self._total_observations += 1
 
                 observations.append(

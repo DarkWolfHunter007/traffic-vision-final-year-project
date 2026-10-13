@@ -44,6 +44,7 @@ tracking:
   track_buffer_seconds: 1.0
   fuse_score: true
   chunk_frames: 500
+  batch_size: 500
 trajectories:
   ground_point_method: bottom_center
   max_gap_seconds: 1.0

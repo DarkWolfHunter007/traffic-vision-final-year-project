@@ -23,7 +23,8 @@ tracking:
   match_thresh: 0.8
   track_buffer_seconds: 1.0  # Buffer duration in seconds (converted to frames based on effective fps)
   fuse_score: true
-  batch_size: 500            # Bounded memory observation persistence chunk size
+  chunk_frames: 500          # DB query window for streaming parent detection frames
+  batch_size: 500            # Observation flush size for bounded-memory SQLite inserts
 ```
 
 ## Schema changes and data contract
@@ -44,7 +45,7 @@ No schema alterations were required. The canonical `tracks` table defined in `ba
 
 ## Memory & transaction reliability
 
-- Bounded RAM: Observations are queued in memory only up to `batch_size` (default 500) before flushing to SQLite.
+- Bounded RAM: Input detection frames are read in windows of `chunk_frames` (DB query window, default 500), and generated track observations are queued in memory only up to `batch_size` (observation flush size, default 500) before flushing to SQLite.
 - Atomic Rollback: All batch flushes occur within a single database transaction context. If an error occurs during any batch, the entire transaction is rolled back, leaving zero orphaned rows in `tracks`, and the run is recorded with `status = 'failed'`.
 
 ## Tests and software fixtures
