@@ -50,6 +50,14 @@ from backend.services.dataset import (
     build_active_learning_dataset,
     get_dataset_manifest,
 )
+from backend.services.evaluation import (
+    compare_models,
+    evaluate_counting,
+    evaluate_detection,
+    get_model_details,
+    register_model,
+    select_production_model,
+)
 from backend.structured_logging import configure_logging
 
 
@@ -196,7 +204,39 @@ def build_parser() -> argparse.ArgumentParser:
     audit_leakage = commands.add_parser("audit-dataset-leakage", help="Audit an exported dataset for split leakage")
     audit_leakage.add_argument("path", type=Path, help="Dataset directory or manifest.json file path")
     audit_leakage.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    reg_model = commands.add_parser("register-model", help="Register a candidate model version")
+    reg_model.add_argument("version", help="Model version identifier")
+    reg_model.add_argument("path", type=Path, help="Model weights file path")
+    reg_model.add_argument("--dataset-version", default=None, help="Dataset version used for model")
+    reg_model.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    eval_det = commands.add_parser("evaluate-detection", help="Evaluate model detection performance on held-out split")
+    eval_det.add_argument("model_version", help="Model version identifier")
+    eval_det.add_argument("dataset_path", type=Path, help="Dataset directory or manifest.json path")
+    eval_det.add_argument("--split", default="val", help="Dataset split to evaluate (val or test)")
+    eval_det.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    eval_cnt = commands.add_parser("evaluate-counting", help="Evaluate model counting against Phase 06 ground truth")
+    eval_cnt.add_argument("model_version", help="Model version identifier")
+    eval_cnt.add_argument("run_id", help="Counting processing run ID")
+    eval_cnt.add_argument("--ground-truth-set", default=None, help="Ground truth set ID")
+    eval_cnt.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    cmp_mod = commands.add_parser("compare-models", help="Compare evaluation metrics between two models")
+    cmp_mod.add_argument("model_a", help="First model version")
+    cmp_mod.add_argument("model_b", help="Second model version")
+    cmp_mod.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    sel_mod = commands.add_parser("select-model", help="Select production active model")
+    sel_mod.add_argument("model_version", help="Model version identifier to activate")
+    sel_mod.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    show_mod = commands.add_parser("show-model", help="Show model metadata and evaluations")
+    show_mod.add_argument("model_version", help="Model version identifier")
+    show_mod.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
+
 
 
 def _parse_bbox_arg(val: str | None) -> dict[str, float] | None:
@@ -492,6 +532,62 @@ def main() -> None:
         audit_res = audit_dataset_leakage_from_path(args.path)
         print(json.dumps(audit_res, sort_keys=True))
         return
+    if args.command == "register-model":
+        result = register_model(
+            model_version=args.version,
+            model_path=args.path,
+            dataset_version=args.dataset_version,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "evaluate-detection":
+        result = evaluate_detection(
+            model_version=args.model_version,
+            dataset_path=args.dataset_path,
+            split=args.split,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "evaluate-counting":
+        result = evaluate_counting(
+            model_version=args.model_version,
+            run_id=args.run_id,
+            ground_truth_set_id=args.ground_truth_set,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "compare-models":
+        result = compare_models(
+            model_version_a=args.model_a,
+            model_version_b=args.model_b,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "select-model":
+        result = select_production_model(
+            model_version=args.model_version,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "show-model":
+        result = get_model_details(
+            model_version=args.model_version,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+
     result = ingest_video(
         args.video,
         config,

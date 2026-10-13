@@ -129,6 +129,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "min_frame_interval_s": 0.0,
         "export_images": True,
     },
+    "evaluation": {
+        "iou_threshold": 0.5,
+        "map_iou_thresholds": [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
+        "confidence_threshold": 0.25,
+        "held_out_split": "val",
+        "counting_tolerance_pct": 10.0,
+        "output_dir": "data/processed/evaluations",
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -394,6 +402,31 @@ def _validate(config: Mapping[str, Any]) -> None:
         export_img = al.get("export_images")
         if not isinstance(export_img, bool):
             raise ConfigError("active_learning.export_images must be a boolean")
+    ev = config.get("evaluation")
+    if ev is not None:
+        if not isinstance(ev, Mapping):
+            raise ConfigError("evaluation must be a mapping")
+        iou = ev.get("iou_threshold")
+        if not (isinstance(iou, (int, float)) and 0.0 <= iou <= 1.0):
+            raise ConfigError("evaluation.iou_threshold must be between 0.0 and 1.0")
+        map_ious = ev.get("map_iou_thresholds")
+        if not isinstance(map_ious, (list, tuple)) or not map_ious:
+            raise ConfigError("evaluation.map_iou_thresholds must be a non-empty list of numbers")
+        for val in map_ious:
+            if not (isinstance(val, (int, float)) and 0.0 <= val <= 1.0):
+                raise ConfigError("evaluation.map_iou_thresholds values must be between 0.0 and 1.0")
+        conf = ev.get("confidence_threshold")
+        if not (isinstance(conf, (int, float)) and 0.0 <= conf <= 1.0):
+            raise ConfigError("evaluation.confidence_threshold must be between 0.0 and 1.0")
+        split = ev.get("held_out_split")
+        if split not in ("val", "test"):
+            raise ConfigError("evaluation.held_out_split must be 'val' or 'test'")
+        tol = ev.get("counting_tolerance_pct")
+        if not (isinstance(tol, (int, float)) and tol > 0):
+            raise ConfigError("evaluation.counting_tolerance_pct must be a positive number")
+        out_dir = ev.get("output_dir")
+        if not isinstance(out_dir, str) or not out_dir.strip():
+            raise ConfigError("evaluation.output_dir must be a non-empty string")
 
 
 

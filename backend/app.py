@@ -22,6 +22,17 @@ from backend.services.review import (
     get_manual_reviews,
     update_manual_review,
 )
+from backend.evaluation import EvaluationError, EvaluationLeakageError
+from backend.services.evaluation import (
+    compare_models,
+    evaluate_counting,
+    evaluate_detection,
+    get_model_details,
+    list_models,
+    register_model,
+    select_production_model,
+)
+
 
 
 class BoundingBoxModel(BaseModel):
@@ -76,6 +87,34 @@ class ExportDatasetRequest(BaseModel):
 
 class AuditDatasetLeakageRequest(BaseModel):
     dataset_path: str
+
+
+class RegisterModelRequest(BaseModel):
+    model_version: str
+    model_path: str
+    dataset_version: str | None = None
+
+
+class EvaluateDetectionRequest(BaseModel):
+    model_version: str
+    dataset_path: str
+    split: str = "val"
+
+
+class EvaluateCountingRequest(BaseModel):
+    model_version: str
+    run_id: str
+    ground_truth_set_id: str | None = None
+
+
+class CompareModelsRequest(BaseModel):
+    model_version_a: str
+    model_version_b: str
+
+
+class SelectProductionModelRequest(BaseModel):
+    model_version: str
+
 
 
 def create_app() -> FastAPI:
@@ -224,7 +263,75 @@ def create_app() -> FastAPI:
         except (ValueError, RuntimeError) as err:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err))
 
+    # Phase 12 Model Evaluation Endpoints
+
+    @app.post("/models/register", status_code=status.HTTP_201_CREATED)
+    def register_model_endpoint(request: RegisterModelRequest) -> dict[str, Any]:
+        try:
+            return register_model(
+                model_version=request.model_version,
+                model_path=request.model_path,
+                dataset_version=request.dataset_version,
+            )
+        except (EvaluationError, FileNotFoundError, ValueError) as err:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err))
+
+    @app.get("/models")
+    def list_models_endpoint() -> list[dict[str, Any]]:
+        return list_models()
+
+    @app.get("/models/{model_version}")
+    def get_model_endpoint(model_version: str) -> dict[str, Any]:
+        try:
+            return get_model_details(model_version)
+        except EvaluationError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    @app.post("/models/evaluate-detection")
+    def evaluate_detection_endpoint(request: EvaluateDetectionRequest) -> dict[str, Any]:
+        try:
+            return evaluate_detection(
+                model_version=request.model_version,
+                dataset_path=request.dataset_path,
+                split=request.split,
+            )
+        except EvaluationLeakageError as err:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"Leakage check failed: {err}")
+        except FileNotFoundError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+        except EvaluationError as err:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err))
+
+    @app.post("/models/evaluate-counting")
+    def evaluate_counting_endpoint(request: EvaluateCountingRequest) -> dict[str, Any]:
+        try:
+            return evaluate_counting(
+                model_version=request.model_version,
+                run_id=request.run_id,
+                ground_truth_set_id=request.ground_truth_set_id,
+            )
+        except EvaluationError as err:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err))
+
+    @app.post("/models/compare")
+    def compare_models_endpoint(request: CompareModelsRequest) -> dict[str, Any]:
+        try:
+            return compare_models(
+                model_version_a=request.model_version_a,
+                model_version_b=request.model_version_b,
+            )
+        except EvaluationError as err:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err))
+
+    @app.post("/models/select-production")
+    def select_production_model_endpoint(request: SelectProductionModelRequest) -> dict[str, Any]:
+        try:
+            return select_production_model(model_version=request.model_version)
+        except EvaluationError as err:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err))
+
     return app
+
 
 
 app = create_app()

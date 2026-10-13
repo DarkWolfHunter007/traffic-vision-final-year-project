@@ -66,13 +66,22 @@ def metadata_json(metadata: dict[str, object]) -> str:
 
 
 def insert_model_version(connection: sqlite3.Connection, model: dict[str, object]) -> None:
+    params = dict(model)
+    params.setdefault("selected_for_production", 0)
     connection.execute(
         """
-        INSERT OR IGNORE INTO model_versions (model_version, model_path, sha256, dataset_version, created_at, metrics_json)
-        VALUES (:model_version, :model_path, :sha256, :dataset_version, :created_at, :metrics_json)
+        INSERT OR IGNORE INTO model_versions (
+            model_version, model_path, sha256, dataset_version, created_at,
+            selected_for_production, metrics_json
+        )
+        VALUES (
+            :model_version, :model_path, :sha256, :dataset_version, :created_at,
+            :selected_for_production, :metrics_json
+        )
         """,
-        model,
+        params,
     )
+
 
 
 def insert_detections(connection: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
@@ -955,3 +964,76 @@ def fetch_video_by_id(
         """,
         (video_id,),
     ).fetchone()
+
+
+def fetch_model_version(
+    connection: sqlite3.Connection, model_version: str
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT model_version, model_path, sha256, dataset_version, created_at,
+               selected_for_production, metrics_json
+        FROM model_versions
+        WHERE model_version = ?
+        """,
+        (model_version,),
+    ).fetchone()
+
+
+def fetch_all_model_versions(
+    connection: sqlite3.Connection,
+) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT model_version, model_path, sha256, dataset_version, created_at,
+               selected_for_production, metrics_json
+        FROM model_versions
+        ORDER BY created_at DESC
+        """
+    ).fetchall()
+
+
+def fetch_production_model(
+    connection: sqlite3.Connection,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT model_version, model_path, sha256, dataset_version, created_at,
+               selected_for_production, metrics_json
+        FROM model_versions
+        WHERE selected_for_production = 1
+        """
+    ).fetchone()
+
+
+def update_model_metrics(
+    connection: sqlite3.Connection, model_version: str, metrics_json: str
+) -> None:
+    connection.execute(
+        """
+        UPDATE model_versions
+        SET metrics_json = ?
+        WHERE model_version = ?
+        """,
+        (metrics_json, model_version),
+    )
+
+
+def set_production_model_version(
+    connection: sqlite3.Connection, model_version: str
+) -> None:
+    existing = connection.execute(
+        "SELECT model_version FROM model_versions WHERE model_version = ?",
+        (model_version,),
+    ).fetchone()
+    if existing is None:
+        raise ValueError(f"Model version not found: {model_version}")
+
+    connection.execute(
+        "UPDATE model_versions SET selected_for_production = 0 WHERE selected_for_production = 1"
+    )
+    connection.execute(
+        "UPDATE model_versions SET selected_for_production = 1 WHERE model_version = ?",
+        (model_version,),
+    )
+
