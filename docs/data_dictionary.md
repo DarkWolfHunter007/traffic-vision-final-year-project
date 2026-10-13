@@ -112,3 +112,27 @@ Phase 01 owns only the minimal API/frontend skeleton needed to establish reposit
   - `smoothing_window`: temporal smoothing window duration in seconds.
   - `ground_point_method`: method used for road contact point projection (`'bottom_center'`).
 
+## Phase 09 stopped vehicles and queue observations
+
+- `stop_events`: canonical detected stopped episodes for individual vehicle tracks.
+  - `stop_event_id`: stable text primary key (UUID).
+  - `run_id`: foreign key referencing `processing_runs(run_id)`.
+  - `video_id`: foreign key referencing `videos(video_id)`.
+  - `track_id`: integer vehicle track identifier.
+  - `start_timestamp_s`: authoritative media timestamp when stopped state began.
+  - `end_timestamp_s`: authoritative media timestamp when stopped state ended.
+  - `duration_s`: total stopped duration in seconds (`end_timestamp_s - start_timestamp_s`).
+  - `threshold_kmh`: configured speed threshold in km/h used to classify stopped state.
+  - `status`: observation status, one of `'valid'`, `'invalid'`, or `'unavailable'`.
+- `queue_events`: canonical queue observations across designated queue zones and approaches.
+  - `queue_event_id`: stable text primary key (UUID).
+  - `run_id`: foreign key referencing `processing_runs(run_id)`.
+  - `video_id`: foreign key referencing `videos(video_id)`.
+  - `zone_id`: nullable identifier of queue zone referencing `zones(zone_id)`.
+  - `approach`: declared intersection approach name.
+  - `timestamp_s`: authoritative media timestamp from source timeline for the evaluation instant.
+  - `queue_length_m`: calibrated physical queue length in metres; NULL when status is not 'valid'.
+  - `queued_vehicle_count`: integer count of stopped vehicles forming the queue in the zone.
+  - `status`: observation status, one of `'valid'`, `'invalid'`, or `'unavailable'`.
+
+

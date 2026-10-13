@@ -89,6 +89,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "max_plausible_speed_mps": 45.0,
         "ground_point_method": "bottom_center",
     },
+    "queue": {
+        "stop_speed_threshold_kmh": 5.0,
+        "min_stop_duration_s": 3.0,
+        "min_queue_vehicles": 2,
+        "aggregation_interval_s": 1.0,
+        "max_gap_seconds": 1.0,
+        "stop_line_mapping": {},
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -265,6 +273,29 @@ def _validate(config: Mapping[str, Any]) -> None:
         ground_method = speed.get("ground_point_method")
         if ground_method != "bottom_center":
             raise ConfigError("Phase 08 requires speed.ground_point_method to be 'bottom_center'")
+    queue = config.get("queue")
+    if queue is not None:
+        if not isinstance(queue, Mapping):
+            raise ConfigError("queue must be a mapping")
+        speed_thresh = queue.get("stop_speed_threshold_kmh")
+        if not (isinstance(speed_thresh, (int, float)) and speed_thresh > 0):
+            raise ConfigError("queue.stop_speed_threshold_kmh must be a positive number")
+        min_duration = queue.get("min_stop_duration_s")
+        if not (isinstance(min_duration, (int, float)) and min_duration >= 0):
+            raise ConfigError("queue.min_stop_duration_s must be a non-negative number")
+        min_vehicles = queue.get("min_queue_vehicles")
+        if not (isinstance(min_vehicles, int) and min_vehicles >= 1):
+            raise ConfigError("queue.min_queue_vehicles must be an integer >= 1")
+        agg_interval = queue.get("aggregation_interval_s")
+        if not (isinstance(agg_interval, (int, float)) and agg_interval > 0):
+            raise ConfigError("queue.aggregation_interval_s must be a positive number")
+        max_gap = queue.get("max_gap_seconds")
+        if not (isinstance(max_gap, (int, float)) and max_gap > 0):
+            raise ConfigError("queue.max_gap_seconds must be a positive number")
+        stop_lines = queue.get("stop_line_mapping")
+        if stop_lines is not None and not isinstance(stop_lines, Mapping):
+            raise ConfigError("queue.stop_line_mapping must be a mapping")
+
 
 
 def load_config(path: Path | None = None, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:

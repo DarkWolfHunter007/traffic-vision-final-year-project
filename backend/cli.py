@@ -33,6 +33,11 @@ from backend.services.speed import (
     get_speed_observations,
     run_speed_estimation,
 )
+from backend.services.queue import (
+    get_queue_events,
+    get_stop_events,
+    run_queue_detection,
+)
 from backend.structured_logging import configure_logging
 
 
@@ -99,6 +104,21 @@ def build_parser() -> argparse.ArgumentParser:
     show_spd.add_argument("--track-id", type=int, default=None, help="Optional track ID filter")
     show_spd.add_argument("--limit", type=int, default=None, help="Optional maximum rows to return")
     show_spd.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    detect_q = commands.add_parser("detect-queue", help="Run stopped vehicle and calibrated queue detection")
+    detect_q.add_argument("parent_run_id", help="Parent processing run ID")
+    detect_q.add_argument("--calibration-id", default=None, help="Optional accepted calibration ID")
+    detect_q.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    show_q = commands.add_parser("show-queue", help="Inspect queue events for a queue run")
+    show_q.add_argument("run_id", help="Queue detection processing run ID")
+    show_q.add_argument("--zone-id", default=None, help="Optional zone ID filter")
+    show_q.add_argument("--approach", default=None, help="Optional approach filter")
+    show_q.add_argument("--limit", type=int, default=None, help="Optional maximum rows to return")
+    show_q.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    show_stops = commands.add_parser("show-stops", help="Inspect stop events for a queue run")
+    show_stops.add_argument("run_id", help="Queue detection processing run ID")
+    show_stops.add_argument("--track-id", type=int, default=None, help="Optional track ID filter")
+    show_stops.add_argument("--limit", type=int, default=None, help="Optional maximum rows to return")
+    show_stops.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
 
 
@@ -246,6 +266,36 @@ def main() -> None:
         return
     if args.command == "show-speed":
         result = get_speed_observations(
+            args.run_id,
+            track_id=args.track_id,
+            limit=args.limit,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "detect-queue":
+        result = run_queue_detection(
+            args.parent_run_id,
+            calibration_id=args.calibration_id,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "show-queue":
+        result = get_queue_events(
+            args.run_id,
+            zone_id=args.zone_id,
+            approach=args.approach,
+            limit=args.limit,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "show-stops":
+        result = get_stop_events(
             args.run_id,
             track_id=args.track_id,
             limit=args.limit,

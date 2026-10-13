@@ -612,3 +612,130 @@ def update_tracks_world_coordinates(
     )
 
 
+def insert_stop_events(connection: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO stop_events (
+            stop_event_id, run_id, video_id, track_id, start_timestamp_s,
+            end_timestamp_s, duration_s, threshold_kmh, status
+        ) VALUES (
+            :stop_event_id, :run_id, :video_id, :track_id, :start_timestamp_s,
+            :end_timestamp_s, :duration_s, :threshold_kmh, :status
+        )
+        """,
+        rows,
+    )
+
+
+def insert_queue_events(connection: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO queue_events (
+            queue_event_id, run_id, video_id, zone_id, approach,
+            timestamp_s, queue_length_m, queued_vehicle_count, status
+        ) VALUES (
+            :queue_event_id, :run_id, :video_id, :zone_id, :approach,
+            :timestamp_s, :queue_length_m, :queued_vehicle_count, :status
+        )
+        """,
+        rows,
+    )
+
+
+def fetch_stop_events_for_run(
+    connection: sqlite3.Connection, run_id: str, track_id: int | None = None
+) -> list[sqlite3.Row]:
+    if track_id is not None:
+        return connection.execute(
+            """
+            SELECT stop_event_id, run_id, video_id, track_id, start_timestamp_s,
+                   end_timestamp_s, duration_s, threshold_kmh, status
+            FROM stop_events
+            WHERE run_id = ? AND track_id = ?
+            ORDER BY start_timestamp_s ASC
+            """,
+            (run_id, track_id),
+        ).fetchall()
+    return connection.execute(
+        """
+        SELECT stop_event_id, run_id, video_id, track_id, start_timestamp_s,
+               end_timestamp_s, duration_s, threshold_kmh, status
+        FROM stop_events
+        WHERE run_id = ?
+        ORDER BY track_id ASC, start_timestamp_s ASC
+        """,
+        (run_id,),
+    ).fetchall()
+
+
+def fetch_queue_events_for_run(
+    connection: sqlite3.Connection,
+    run_id: str,
+    zone_id: str | None = None,
+    approach: str | None = None,
+) -> list[sqlite3.Row]:
+    query = """
+        SELECT queue_event_id, run_id, video_id, zone_id, approach,
+               timestamp_s, queue_length_m, queued_vehicle_count, status
+        FROM queue_events
+        WHERE run_id = ?
+    """
+    params: list[object] = [run_id]
+    if zone_id is not None:
+        query += " AND zone_id = ?"
+        params.append(zone_id)
+    if approach is not None:
+        query += " AND approach = ?"
+        params.append(approach)
+    query += " ORDER BY timestamp_s ASC, zone_id ASC"
+    return connection.execute(query, params).fetchall()
+
+
+def fetch_queue_detection_stats(connection: sqlite3.Connection, run_id: str) -> dict[str, object]:
+    stop_row = connection.execute(
+        """
+        SELECT
+            COUNT(*) as total_stops,
+            SUM(CASE WHEN status = 'valid' THEN 1 ELSE 0 END) as valid_stops,
+            AVG(CASE WHEN status = 'valid' THEN duration_s ELSE NULL END) as mean_stop_duration_s,
+            MAX(CASE WHEN status = 'valid' THEN duration_s ELSE NULL END) as max_stop_duration_s
+        FROM stop_events
+        WHERE run_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+
+    queue_row = connection.execute(
+        """
+        SELECT
+            COUNT(*) as total_queue_events,
+            SUM(CASE WHEN status = 'valid' THEN 1 ELSE 0 END) as valid_queue_events,
+            SUM(CASE WHEN status = 'unavailable' THEN 1 ELSE 0 END) as unavailable_queue_events,
+            SUM(CASE WHEN status = 'invalid' THEN 1 ELSE 0 END) as invalid_queue_events,
+            SUM(CASE WHEN status = 'valid' AND queue_length_m > 0 THEN 1 ELSE 0 END) as formed_queue_events,
+            AVG(CASE WHEN status = 'valid' AND queue_length_m > 0 THEN queue_length_m ELSE NULL END) as mean_queue_length_m,
+            MAX(CASE WHEN status = 'valid' THEN queue_length_m ELSE NULL END) as max_queue_length_m,
+            MAX(queued_vehicle_count) as max_queued_vehicles
+        FROM queue_events
+        WHERE run_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+
+    return {
+        "total_stops": int(stop_row["total_stops"] or 0) if stop_row else 0,
+        "valid_stops": int(stop_row["valid_stops"] or 0) if stop_row else 0,
+        "mean_stop_duration_s": round(float(stop_row["mean_stop_duration_s"]), 2) if stop_row and stop_row["mean_stop_duration_s"] is not None else None,
+        "max_stop_duration_s": round(float(stop_row["max_stop_duration_s"]), 2) if stop_row and stop_row["max_stop_duration_s"] is not None else None,
+        "total_queue_events": int(queue_row["total_queue_events"] or 0) if queue_row else 0,
+        "valid_queue_events": int(queue_row["valid_queue_events"] or 0) if queue_row else 0,
+        "unavailable_queue_events": int(queue_row["unavailable_queue_events"] or 0) if queue_row else 0,
+        "invalid_queue_events": int(queue_row["invalid_queue_events"] or 0) if queue_row else 0,
+        "formed_queue_events": int(queue_row["formed_queue_events"] or 0) if queue_row else 0,
+        "mean_queue_length_m": round(float(queue_row["mean_queue_length_m"]), 2) if queue_row and queue_row["mean_queue_length_m"] is not None else None,
+        "max_queue_length_m": round(float(queue_row["max_queue_length_m"]), 2) if queue_row and queue_row["max_queue_length_m"] is not None else None,
+        "max_queued_vehicles": int(queue_row["max_queued_vehicles"] or 0) if queue_row and queue_row["max_queued_vehicles"] is not None else 0,
+    }
+
+
+
