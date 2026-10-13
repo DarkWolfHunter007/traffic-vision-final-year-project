@@ -135,4 +135,25 @@ Phase 01 owns only the minimal API/frontend skeleton needed to establish reposit
   - `queued_vehicle_count`: integer count of stopped vehicles forming the queue in the zone.
   - `status`: observation status, one of `'valid'`, `'invalid'`, or `'unavailable'`.
 
+## Phase 10 manual reviews and human-in-the-loop corrections
+
+- `manual_reviews`: canonical auditable human review and correction records.
+  - `review_id`: stable text primary key (UUID).
+  - `run_id`: foreign key referencing `processing_runs(run_id)`.
+  - `video_id`: foreign key referencing `videos(video_id)`.
+  - `track_id`: nullable integer vehicle track identifier referencing vehicle track.
+  - `detection_id`: nullable text detection identifier referencing `detections(detection_id)`.
+  - `frame_number`: integer frame index.
+  - `timestamp_s`: authoritative media timestamp in seconds from source timeline.
+  - `original_class`: nullable original predicted vehicle class.
+  - `corrected_class`: nullable human-corrected vehicle class from `review.allowed_classes`.
+  - `original_bbox_json`: nullable JSON string storing original bounding box `{"x1": ..., "y1": ..., "x2": ..., "y2": ...}`.
+  - `corrected_bbox_json`: nullable JSON string storing corrected bounding box `{"x1": ..., "y1": ..., "x2": ..., "y2": ...}`.
+  - `reason`: mandatory text explanation for review (e.g. `'low_confidence'`, `'class_ambiguity'`, `'boundary_drift'`).
+  - `review_status`: review lifecycle status, constrained to `'pending'`, `'approved'`, or `'rejected'`.
+  - `reviewer`: mandatory text identifier of human reviewer or audit agent.
+  - `reviewed_at`: mandatory authoritative ISO 8601 UTC timestamp.
+  - `snippet_path`: nullable file path to extracted before/after event snippet video clip.
+
+
 

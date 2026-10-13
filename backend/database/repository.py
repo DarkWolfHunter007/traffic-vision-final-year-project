@@ -738,4 +738,166 @@ def fetch_queue_detection_stats(connection: sqlite3.Connection, run_id: str) -> 
     }
 
 
+def insert_manual_review(connection: sqlite3.Connection, review: dict[str, object]) -> None:
+    connection.execute(
+        """
+        INSERT INTO manual_reviews (
+            review_id, run_id, video_id, track_id, detection_id, frame_number,
+            timestamp_s, original_class, corrected_class, original_bbox_json,
+            corrected_bbox_json, reason, review_status, reviewer, reviewed_at,
+            snippet_path
+        ) VALUES (
+            :review_id, :run_id, :video_id, :track_id, :detection_id, :frame_number,
+            :timestamp_s, :original_class, :corrected_class, :original_bbox_json,
+            :corrected_bbox_json, :reason, :review_status, :reviewer, :reviewed_at,
+            :snippet_path
+        )
+        """,
+        review,
+    )
+
+
+def update_manual_review_record(
+    connection: sqlite3.Connection, review_id: str, updates: dict[str, object]
+) -> None:
+    set_clauses = [f"{k} = :{k}" for k in updates]
+    if not set_clauses:
+        return
+    params = dict(updates)
+    params["review_id"] = review_id
+    query = f"UPDATE manual_reviews SET {', '.join(set_clauses)} WHERE review_id = :review_id"
+    connection.execute(query, params)
+
+
+def fetch_manual_reviews(
+    connection: sqlite3.Connection,
+    run_id: str | None = None,
+    video_id: str | None = None,
+    review_status: str | None = None,
+    reviewer: str | None = None,
+    track_id: int | None = None,
+    detection_id: str | None = None,
+    limit: int | None = None,
+) -> list[sqlite3.Row]:
+    query = """
+        SELECT review_id, run_id, video_id, track_id, detection_id, frame_number,
+               timestamp_s, original_class, corrected_class, original_bbox_json,
+               corrected_bbox_json, reason, review_status, reviewer, reviewed_at,
+               snippet_path
+        FROM manual_reviews
+        WHERE 1 = 1
+    """
+    params: list[object] = []
+    if run_id is not None:
+        query += " AND run_id = ?"
+        params.append(run_id)
+    if video_id is not None:
+        query += " AND video_id = ?"
+        params.append(video_id)
+    if review_status is not None:
+        query += " AND review_status = ?"
+        params.append(review_status)
+    if reviewer is not None:
+        query += " AND reviewer = ?"
+        params.append(reviewer)
+    if track_id is not None:
+        query += " AND track_id = ?"
+        params.append(track_id)
+    if detection_id is not None:
+        query += " AND detection_id = ?"
+        params.append(detection_id)
+    query += " ORDER BY timestamp_s ASC, frame_number ASC"
+    if limit is not None and limit > 0:
+        query += " LIMIT ?"
+        params.append(limit)
+    return connection.execute(query, params).fetchall()
+
+
+def fetch_manual_review_by_id(
+    connection: sqlite3.Connection, review_id: str
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT review_id, run_id, video_id, track_id, detection_id, frame_number,
+               timestamp_s, original_class, corrected_class, original_bbox_json,
+               corrected_bbox_json, reason, review_status, reviewer, reviewed_at,
+               snippet_path
+        FROM manual_reviews
+        WHERE review_id = ?
+        """,
+        (review_id,),
+    ).fetchone()
+
+
+def fetch_detection_by_id(
+    connection: sqlite3.Connection, detection_id: str
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT detection_id, run_id, video_id, frame_number, timestamp_s,
+               class_id, class_name, confidence, x1, y1, x2, y2, ground_x, ground_y,
+               width_px, height_px
+        FROM detections
+        WHERE detection_id = ?
+        """,
+        (detection_id,),
+    ).fetchone()
+
+
+def fetch_track_observation_by_id(
+    connection: sqlite3.Connection, track_observation_id: str
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT track_observation_id, run_id, video_id, track_id, frame_number,
+               timestamp_s, vehicle_class, confidence, x1, y1, x2, y2, ground_x,
+               ground_y, world_x, world_y, calibration_id, trajectory_status
+        FROM tracks
+        WHERE track_observation_id = ?
+        """,
+        (track_observation_id,),
+    ).fetchone()
+
+
+def fetch_manual_review_stats(
+    connection: sqlite3.Connection, run_id: str | None = None
+) -> dict[str, object]:
+    query = """
+        SELECT
+            COUNT(*) as total_reviews,
+            SUM(CASE WHEN review_status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+            SUM(CASE WHEN review_status = 'approved' THEN 1 ELSE 0 END) as approved_count,
+            SUM(CASE WHEN review_status = 'rejected' THEN 1 ELSE 0 END) as rejected_count,
+            SUM(CASE WHEN corrected_class IS NOT NULL THEN 1 ELSE 0 END) as class_corrected_count,
+            SUM(CASE WHEN corrected_bbox_json IS NOT NULL THEN 1 ELSE 0 END) as bbox_corrected_count,
+            SUM(CASE WHEN snippet_path IS NOT NULL THEN 1 ELSE 0 END) as snippet_count
+        FROM manual_reviews
+    """
+    params: list[object] = []
+    if run_id is not None:
+        query += " WHERE run_id = ?"
+        params.append(run_id)
+    row = connection.execute(query, params).fetchone()
+    if row is None:
+        return {
+            "total_reviews": 0,
+            "pending_count": 0,
+            "approved_count": 0,
+            "rejected_count": 0,
+            "class_corrected_count": 0,
+            "bbox_corrected_count": 0,
+            "snippet_count": 0,
+        }
+    return {
+        "total_reviews": int(row["total_reviews"] or 0),
+        "pending_count": int(row["pending_count"] or 0),
+        "approved_count": int(row["approved_count"] or 0),
+        "rejected_count": int(row["rejected_count"] or 0),
+        "class_corrected_count": int(row["class_corrected_count"] or 0),
+        "bbox_corrected_count": int(row["bbox_corrected_count"] or 0),
+        "snippet_count": int(row["snippet_count"] or 0),
+    }
+
+
+
 

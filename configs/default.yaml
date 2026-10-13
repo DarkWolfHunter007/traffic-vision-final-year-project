@@ -110,5 +110,21 @@ queue:
   aggregation_interval_s: 1.0
   max_gap_seconds: 1.0
   stop_line_mapping: {}
+review:
+  confidence_threshold: 0.5
+  snippet_before_s: 1.0
+  snippet_after_s: 1.0
+  allowed_classes:
+    - car
+    - bus
+    - truck
+    - motorcycle
+    - auto_rickshaw
+  review_statuses:
+    - pending
+    - approved
+    - rejected
+  output_dir: data/processed/review_snippets
+
 
 

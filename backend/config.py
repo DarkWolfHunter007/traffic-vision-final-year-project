@@ -97,6 +97,20 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "max_gap_seconds": 1.0,
         "stop_line_mapping": {},
     },
+    "review": {
+        "confidence_threshold": 0.50,
+        "snippet_before_s": 1.0,
+        "snippet_after_s": 1.0,
+        "allowed_classes": [
+            "car",
+            "bus",
+            "truck",
+            "motorcycle",
+            "auto_rickshaw",
+        ],
+        "review_statuses": ["pending", "approved", "rejected"],
+        "output_dir": "data/processed/review_snippets",
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -295,6 +309,31 @@ def _validate(config: Mapping[str, Any]) -> None:
         stop_lines = queue.get("stop_line_mapping")
         if stop_lines is not None and not isinstance(stop_lines, Mapping):
             raise ConfigError("queue.stop_line_mapping must be a mapping")
+    review = config.get("review")
+    if review is not None:
+        if not isinstance(review, Mapping):
+            raise ConfigError("review must be a mapping")
+        conf_thresh = review.get("confidence_threshold")
+        if not (isinstance(conf_thresh, (int, float)) and 0.0 <= conf_thresh <= 1.0):
+            raise ConfigError("review.confidence_threshold must be a number between 0.0 and 1.0")
+        snippet_before = review.get("snippet_before_s")
+        if not (isinstance(snippet_before, (int, float)) and snippet_before >= 0):
+            raise ConfigError("review.snippet_before_s must be a non-negative number")
+        snippet_after = review.get("snippet_after_s")
+        if not (isinstance(snippet_after, (int, float)) and snippet_after >= 0):
+            raise ConfigError("review.snippet_after_s must be a non-negative number")
+        allowed_classes = review.get("allowed_classes")
+        if not isinstance(allowed_classes, list) or not all(isinstance(c, str) and c.strip() for c in allowed_classes):
+            raise ConfigError("review.allowed_classes must be a list of non-empty strings")
+        review_statuses = review.get("review_statuses")
+        if not isinstance(review_statuses, list) or not all(isinstance(s, str) and s.strip() for s in review_statuses):
+            raise ConfigError("review.review_statuses must be a list of non-empty strings")
+        for required_status in ("pending", "approved", "rejected"):
+            if required_status not in review_statuses:
+                raise ConfigError(f"review.review_statuses must include '{required_status}'")
+        output_dir = review.get("output_dir")
+        if not isinstance(output_dir, str) or not output_dir.strip():
+            raise ConfigError("review.output_dir must be a non-empty string")
 
 
 

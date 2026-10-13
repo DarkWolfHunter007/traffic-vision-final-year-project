@@ -38,6 +38,13 @@ from backend.services.queue import (
     get_stop_events,
     run_queue_detection,
 )
+from backend.services.review import (
+    create_manual_review,
+    find_review_candidates,
+    generate_snippet_for_review,
+    get_manual_reviews,
+    update_manual_review,
+)
 from backend.structured_logging import configure_logging
 
 
@@ -119,7 +126,67 @@ def build_parser() -> argparse.ArgumentParser:
     show_stops.add_argument("--track-id", type=int, default=None, help="Optional track ID filter")
     show_stops.add_argument("--limit", type=int, default=None, help="Optional maximum rows to return")
     show_stops.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    find_cands = commands.add_parser("find-review-candidates", help="Find uncertain detections and tracks flagged for review")
+    find_cands.add_argument("parent_run_id", help="Parent processing run ID")
+    find_cands.add_argument("--confidence-threshold", type=float, default=None, help="Optional confidence threshold override")
+    find_cands.add_argument("--limit", type=int, default=None, help="Optional maximum candidates to return")
+    find_cands.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    create_rev = commands.add_parser("create-review", help="Create an auditable manual review / correction record")
+    create_rev.add_argument("parent_run_id", help="Parent processing run ID")
+    create_rev.add_argument("--frame", type=int, required=True, help="Frame number")
+    create_rev.add_argument("--timestamp", type=float, required=True, help="Authoritative timestamp in seconds")
+    create_rev.add_argument("--reason", required=True, help="Review reason (e.g. low_confidence, class_ambiguity)")
+    create_rev.add_argument("--detection-id", default=None, help="Optional detection ID")
+    create_rev.add_argument("--track-id", type=int, default=None, help="Optional track ID")
+    create_rev.add_argument("--reviewer", default="analyst", help="Reviewer username/identifier")
+    create_rev.add_argument("--original-class", default=None, help="Original predicted class")
+    create_rev.add_argument("--corrected-class", default=None, help="Corrected class label")
+    create_rev.add_argument("--original-bbox", default=None, help="Original bbox as JSON or x1,y1,x2,y2")
+    create_rev.add_argument("--corrected-bbox", default=None, help="Corrected bbox as JSON or x1,y1,x2,y2")
+    create_rev.add_argument("--status", default="pending", help="Review status (pending, approved, rejected)")
+    create_rev.add_argument("--generate-snippet", action="store_true", help="Generate before/after event snippet clip")
+    create_rev.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    show_revs = commands.add_parser("show-reviews", help="Query and inspect manual reviews")
+    show_revs.add_argument("--run-id", default=None, help="Optional run ID filter")
+    show_revs.add_argument("--video-id", default=None, help="Optional video ID filter")
+    show_revs.add_argument("--status", default=None, help="Optional status filter")
+    show_revs.add_argument("--reviewer", default=None, help="Optional reviewer filter")
+    show_revs.add_argument("--track-id", type=int, default=None, help="Optional track ID filter")
+    show_revs.add_argument("--detection-id", default=None, help="Optional detection ID filter")
+    show_revs.add_argument("--limit", type=int, default=None, help="Optional maximum rows to return")
+    show_revs.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    update_rev = commands.add_parser("update-review", help="Update review status, reviewer, or correction")
+    update_rev.add_argument("review_id", help="Manual review ID")
+    update_rev.add_argument("--status", default=None, help="New review status")
+    update_rev.add_argument("--corrected-class", default=None, help="Corrected vehicle class")
+    update_rev.add_argument("--corrected-bbox", default=None, help="Corrected bbox as JSON or x1,y1,x2,y2")
+    update_rev.add_argument("--reviewer", default=None, help="Reviewer identifier")
+    update_rev.add_argument("--reason", default=None, help="Review reason or update note")
+    update_rev.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    gen_snip = commands.add_parser("generate-review-snippet", help="Generate before/after video snippet for a review item")
+    gen_snip.add_argument("review_id", help="Manual review ID")
+    gen_snip.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
+
+
+def _parse_bbox_arg(val: str | None) -> dict[str, float] | None:
+    if val is None:
+        return None
+    val = val.strip()
+    if val.startswith("{"):
+        return json.loads(val)
+    if "," in val:
+        parts = [float(p.strip()) for p in val.split(",")]
+        if len(parts) != 4:
+            raise ValueError(f"Bounding box string must have 4 comma-separated numbers (x1,y1,x2,y2), got {val}")
+        return {"x1": parts[0], "y1": parts[1], "x2": parts[2], "y2": parts[3]}
+    raise ValueError(f"Unrecognized bounding box format: {val}")
+
 
 
 
@@ -303,6 +370,74 @@ def main() -> None:
             repository_root=REPOSITORY_ROOT,
         )
         print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "find-review-candidates":
+        result = find_review_candidates(
+            args.parent_run_id,
+            confidence_threshold=args.confidence_threshold,
+            limit=args.limit,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "create-review":
+        orig_box = _parse_bbox_arg(args.original_bbox)
+        corr_box = _parse_bbox_arg(args.corrected_bbox)
+        result = create_manual_review(
+            args.parent_run_id,
+            frame_number=args.frame,
+            timestamp_s=args.timestamp,
+            reason=args.reason,
+            detection_id=args.detection_id,
+            track_id=args.track_id,
+            reviewer=args.reviewer,
+            original_class=args.original_class,
+            corrected_class=args.corrected_class,
+            original_bbox=orig_box,
+            corrected_bbox=corr_box,
+            status=args.status,
+            generate_snippet=args.generate_snippet,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "show-reviews":
+        result = get_manual_reviews(
+            run_id=args.run_id,
+            video_id=args.video_id,
+            review_status=args.status,
+            reviewer=args.reviewer,
+            track_id=args.track_id,
+            detection_id=args.detection_id,
+            limit=args.limit,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "update-review":
+        corr_box = _parse_bbox_arg(args.corrected_bbox)
+        result = update_manual_review(
+            args.review_id,
+            status=args.status,
+            corrected_class=args.corrected_class,
+            corrected_bbox=corr_box,
+            reviewer=args.reviewer,
+            reason=args.reason,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "generate-review-snippet":
+        snip_path = generate_snippet_for_review(
+            args.review_id,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps({"review_id": args.review_id, "snippet_path": str(snip_path)}, sort_keys=True))
         return
     result = ingest_video(
         args.video,
