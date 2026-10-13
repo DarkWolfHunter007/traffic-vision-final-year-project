@@ -1,0 +1,75 @@
+# Example geometry configuration for Pattom Intersection
+approaches:
+  - north
+  - south
+  - east
+  - west
+
+counting_lines:
+  - line_id: line_north_entry
+    name: "North Entry Counting Line"
+    approach: north
+    endpoints:
+      - [300.0, 400.0]
+      - [500.0, 400.0]
+    direction_vector: [0.0, 1.0]
+    bidirectional: false
+
+  - line_id: line_south_exit
+    name: "South Exit Counting Line"
+    approach: south
+    endpoints:
+      - [300.0, 800.0]
+      - [500.0, 800.0]
+    direction_vector: [0.0, 1.0]
+    bidirectional: false
+
+  - line_id: line_east_bidirectional
+    name: "East Approach Boundary Line"
+    approach: east
+    endpoints:
+      - [800.0, 400.0]
+      - [800.0, 700.0]
+    direction_vector: null
+    bidirectional: true
+
+zones:
+  - zone_id: zone_north_entry
+    name: "North Approach Entry Zone"
+    zone_type: entry
+    approach: north
+    vertices:
+      - [250.0, 200.0]
+      - [550.0, 200.0]
+      - [550.0, 390.0]
+      - [250.0, 390.0]
+
+  - zone_id: zone_south_exit
+    name: "South Approach Exit Zone"
+    zone_type: exit
+    approach: south
+    vertices:
+      - [250.0, 810.0]
+      - [550.0, 810.0]
+      - [550.0, 1000.0]
+      - [250.0, 1000.0]
+
+  - zone_id: zone_intersection_roi
+    name: "Intersection Core ROI"
+    zone_type: roi
+    approach: null
+    vertices:
+      - [200.0, 350.0]
+      - [850.0, 350.0]
+      - [850.0, 850.0]
+      - [200.0, 850.0]
+
+  - zone_id: zone_north_queue
+    name: "North Queue Area"
+    zone_type: queue
+    approach: north
+    vertices:
+      - [280.0, 220.0]
+      - [520.0, 220.0]
+      - [520.0, 380.0]
+      - [280.0, 380.0]

@@ -10,6 +10,10 @@ from backend.config import load_config
 from backend.database.connection import bootstrap_database
 from backend.detection import UltralyticsDetector
 from backend.services.detection import run_detection
+from backend.services.geometry_config import (
+    load_geometry_config,
+    render_geometry_preview,
+)
 from backend.services.ingestion import ingest_video
 from backend.services.tracking import run_tracking
 from backend.services.visualization import (
@@ -45,6 +49,15 @@ def build_parser() -> argparse.ArgumentParser:
     visualize.add_argument("--preview-frame", type=int, default=None)
     visualize.add_argument("--start-frame", type=int, default=None)
     visualize.add_argument("--end-frame", type=int, default=None)
+    load_geom = commands.add_parser("load-geometry", help="Load and validate geometry configuration for a video")
+    load_geom.add_argument("video_id")
+    load_geom.add_argument("config_path", type=Path)
+    load_geom.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+    show_geom = commands.add_parser("show-geometry", help="Render configured lines and zones overlaid on a video frame")
+    show_geom.add_argument("video_id")
+    show_geom.add_argument("--output", type=Path, required=True)
+    show_geom.add_argument("--frame", type=int, default=0)
+    show_geom.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
 
 
@@ -116,6 +129,36 @@ def main() -> None:
             end_frame=args.end_frame,
         )
         print(json.dumps({"run_id": run_id, "parent_run_id": args.parent_run_id}, sort_keys=True))
+        return
+    if args.command == "load-geometry":
+        result = load_geometry_config(
+            args.video_id,
+            args.config_path,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "show-geometry":
+        if args.frame < 0:
+            raise SystemExit("frame must be >= 0")
+        output_path = render_geometry_preview(
+            args.video_id,
+            args.output,
+            frame_number=args.frame,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(
+            json.dumps(
+                {
+                    "video_id": args.video_id,
+                    "output_path": str(output_path),
+                    "frame": args.frame,
+                },
+                sort_keys=True,
+            )
+        )
         return
     result = ingest_video(
         args.video,

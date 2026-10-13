@@ -176,3 +176,92 @@ def fetch_run_by_id(connection: sqlite3.Connection, run_id: str) -> sqlite3.Row 
         (run_id,),
     ).fetchone()
 
+
+def insert_counting_line(connection: sqlite3.Connection, line: dict[str, object]) -> None:
+    connection.execute(
+        """
+        INSERT INTO counting_lines (
+            line_id, video_id, name, approach, geometry_json, bidirectional,
+            config_version, geometry_sha256
+        ) VALUES (
+            :line_id, :video_id, :name, :approach, :geometry_json, :bidirectional,
+            :config_version, :geometry_sha256
+        )
+        """,
+        line,
+    )
+
+
+def insert_zone(connection: sqlite3.Connection, zone: dict[str, object]) -> None:
+    connection.execute(
+        """
+        INSERT INTO zones (
+            zone_id, video_id, name, zone_type, approach, geometry_json,
+            config_version, geometry_sha256
+        ) VALUES (
+            :zone_id, :video_id, :name, :zone_type, :approach, :geometry_json,
+            :config_version, :geometry_sha256
+        )
+        """,
+        zone,
+    )
+
+
+def fetch_counting_lines_for_video(
+    connection: sqlite3.Connection, video_id: str
+) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT line_id, video_id, name, approach, geometry_json, bidirectional,
+               config_version, geometry_sha256
+        FROM counting_lines
+        WHERE video_id = ?
+        ORDER BY line_id ASC
+        """,
+        (video_id,),
+    ).fetchall()
+
+
+def fetch_zones_for_video(
+    connection: sqlite3.Connection, video_id: str
+) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT zone_id, video_id, name, zone_type, approach, geometry_json,
+               config_version, geometry_sha256
+        FROM zones
+        WHERE video_id = ?
+        ORDER BY zone_id ASC
+        """,
+        (video_id,),
+    ).fetchall()
+
+
+def fetch_counting_line_by_id(
+    connection: sqlite3.Connection, line_id: str
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT line_id, video_id, name, approach, geometry_json, bidirectional,
+               config_version, geometry_sha256
+        FROM counting_lines
+        WHERE line_id = ?
+        """,
+        (line_id,),
+    ).fetchone()
+
+
+def fetch_zone_by_id(
+    connection: sqlite3.Connection, zone_id: str
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT zone_id, video_id, name, zone_type, approach, geometry_json,
+               config_version, geometry_sha256
+        FROM zones
+        WHERE zone_id = ?
+        """,
+        (zone_id,),
+    ).fetchone()
+
+

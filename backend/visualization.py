@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+import json
 import math
 from typing import Any
 
@@ -250,3 +251,127 @@ def render_frame_annotations(
             )
 
     return canvas
+
+
+ZONE_TYPE_COLORS: dict[str, tuple[int, int, int]] = {
+    "entry": (52, 235, 116),    # Green
+    "exit": (235, 64, 52),     # Red
+    "roi": (52, 235, 222),     # Cyan
+    "queue": (192, 52, 235),   # Violet
+}
+
+
+def render_geometry_overlay(
+    image: np.ndarray,
+    lines: Sequence[Any],
+    zones: Sequence[Any],
+) -> np.ndarray:
+    """Render counting lines and polygonal zones onto an image canvas.
+
+    Parameters:
+        image: Source image array (H, W, 3) in RGB or BGR.
+        lines: Sequence of counting-line dicts or sqlite3.Row mappings.
+        zones: Sequence of zone dicts or sqlite3.Row mappings.
+
+    Returns:
+        New image array with rendered geometry overlays.
+    """
+    canvas = image.copy()
+    overlay = canvas.copy()
+
+    # 1. Render zones with semi-transparent fill and solid boundary
+    for zone in zones:
+        z_dict = dict(zone) if not isinstance(zone, dict) else zone
+        geom = z_dict["geometry_json"]
+        if isinstance(geom, str):
+            geom = json.loads(geom)
+        vertices = geom.get("vertices", [])
+        if len(vertices) < 3:
+            continue
+        pts = np.array(vertices, dtype=np.int32).reshape((-1, 1, 2))
+        zone_type = str(z_dict.get("zone_type", "roi"))
+        color = ZONE_TYPE_COLORS.get(zone_type, (200, 200, 200))
+
+        # Fill on overlay
+        cv2.fillPoly(overlay, [pts], color=color)
+        # Outline on canvas
+        cv2.polylines(canvas, [pts], isClosed=True, color=color, thickness=2, lineType=cv2.LINE_AA)
+
+        # Zone label
+        name = z_dict.get("name") or z_dict.get("zone_id", "zone")
+        label = f"{name} ({zone_type})"
+        if z_dict.get("approach"):
+            label += f" [{z_dict['approach']}]"
+        first_pt = (int(vertices[0][0]), max(15, int(vertices[0][1]) - 5))
+        cv2.putText(
+            canvas,
+            label,
+            first_pt,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (255, 255, 255),
+            1,
+            lineType=cv2.LINE_AA,
+        )
+
+    # Blend semi-transparent filled zones
+    cv2.addWeighted(overlay, 0.25, canvas, 0.75, 0, canvas)
+
+    # 2. Render counting lines with arrows for unidirectional lines
+    for line in lines:
+        l_dict = dict(line) if not isinstance(line, dict) else line
+        geom = l_dict["geometry_json"]
+        if isinstance(geom, str):
+            geom = json.loads(geom)
+        endpoints = geom.get("endpoints", [])
+        if len(endpoints) != 2:
+            continue
+        p1 = (int(round(endpoints[0][0])), int(round(endpoints[0][1])))
+        p2 = (int(round(endpoints[1][0])), int(round(endpoints[1][1])))
+        color = (235, 198, 52)  # Gold/Yellow
+
+        # Line stroke and endpoint dots
+        cv2.line(canvas, p1, p2, color=color, thickness=3, lineType=cv2.LINE_AA)
+        cv2.circle(canvas, p1, 4, (255, 255, 255), -1, lineType=cv2.LINE_AA)
+        cv2.circle(canvas, p2, 4, (255, 255, 255), -1, lineType=cv2.LINE_AA)
+
+        # Direction vector arrow if unidirectional
+        dir_vec = geom.get("direction_vector")
+        if dir_vec and len(dir_vec) == 2:
+            dx, dy = float(dir_vec[0]), float(dir_vec[1])
+            mag = math.hypot(dx, dy)
+            if mag > 1e-6:
+                mid_x = (p1[0] + p2[0]) / 2.0
+                mid_y = (p1[1] + p2[1]) / 2.0
+                arrow_len = 25.0
+                ax = int(round(mid_x + (dx / mag) * arrow_len))
+                ay = int(round(mid_y + (dy / mag) * arrow_len))
+                cv2.arrowedLine(
+                    canvas,
+                    (int(round(mid_x)), int(round(mid_y))),
+                    (ax, ay),
+                    color=(235, 131, 52),  # Orange arrow
+                    thickness=2,
+                    tipLength=0.35,
+                    line_type=cv2.LINE_AA,
+                )
+
+        # Line label
+        name = l_dict.get("name") or l_dict.get("line_id", "line")
+        label = f"{name}"
+        if l_dict.get("approach"):
+            label += f" [{l_dict['approach']}]"
+        mid_pt = (int((p1[0] + p2[0]) / 2) + 5, max(15, int((p1[1] + p2[1]) / 2) - 5))
+        cv2.putText(
+            canvas,
+            label,
+            mid_pt,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (255, 255, 255),
+            1,
+            lineType=cv2.LINE_AA,
+        )
+
+    return canvas
+
