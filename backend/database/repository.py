@@ -899,5 +899,59 @@ def fetch_manual_review_stats(
     }
 
 
+def fetch_approved_manual_reviews(
+    connection: sqlite3.Connection,
+    run_id: str | None = None,
+    video_id: str | None = None,
+) -> list[sqlite3.Row]:
+    query = """
+        SELECT review_id, run_id, video_id, track_id, detection_id, frame_number,
+               timestamp_s, original_class, corrected_class, original_bbox_json,
+               corrected_bbox_json, reason, review_status, reviewer, reviewed_at,
+               snippet_path
+        FROM manual_reviews
+        WHERE review_status = 'approved'
+    """
+    params: list[object] = []
+    if run_id is not None:
+        query += " AND run_id = ?"
+        params.append(run_id)
+    if video_id is not None:
+        query += " AND video_id = ?"
+        params.append(video_id)
+    query += " ORDER BY video_id ASC, timestamp_s ASC, frame_number ASC"
+    return connection.execute(query, params).fetchall()
 
 
+def fetch_ground_truth_segments(
+    connection: sqlite3.Connection, video_id: str | None = None
+) -> list[sqlite3.Row]:
+    query = """
+        SELECT DISTINCT vs.segment_id, vs.video_id, vs.start_s, vs.end_s,
+               vs.start_frame, vs.end_frame, vs.label, vs.condition_notes,
+               gts.ground_truth_set_id, gts.name as ground_truth_set_name, gts.split_group
+        FROM video_segments vs
+        JOIN ground_truth_counts gtc ON vs.segment_id = gtc.video_segment_id
+        JOIN ground_truth_sets gts ON gtc.ground_truth_set_id = gts.ground_truth_set_id
+    """
+    params: list[object] = []
+    if video_id is not None:
+        query += " WHERE vs.video_id = ?"
+        params.append(video_id)
+    query += " ORDER BY vs.video_id ASC, vs.start_s ASC"
+    return connection.execute(query, params).fetchall()
+
+
+def fetch_video_by_id(
+    connection: sqlite3.Connection, video_id: str
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT video_id, filename, path, sha256, fps_nominal, width, height,
+               duration_s, frame_count, variable_frame_rate, wall_clock_start,
+               ingested_at, metadata_json
+        FROM videos
+        WHERE video_id = ?
+        """,
+        (video_id,),
+    ).fetchone()

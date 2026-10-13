@@ -125,6 +125,25 @@ review:
     - approved
     - rejected
   output_dir: data/processed/review_snippets
+active_learning:
+  output_dir: data/processed/datasets
+  default_version: v1
+  split_strategy: time_block
+  time_block_duration_s: 300.0
+  split_ratios:
+    train: 0.8
+    val: 0.2
+    test: 0.0
+  seed: 42
+  duplicate_policy: latest_review
+  class_mapping:
+    car: 0
+    bus: 1
+    truck: 2
+    motorcycle: 3
+    auto_rickshaw: 4
+  min_frame_interval_s: 0.0
+  export_images: true
 
 
 

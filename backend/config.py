@@ -111,6 +111,24 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "review_statuses": ["pending", "approved", "rejected"],
         "output_dir": "data/processed/review_snippets",
     },
+    "active_learning": {
+        "output_dir": "data/processed/datasets",
+        "default_version": "v1",
+        "split_strategy": "time_block",
+        "time_block_duration_s": 300.0,
+        "split_ratios": {"train": 0.8, "val": 0.2, "test": 0.0},
+        "seed": 42,
+        "duplicate_policy": "latest_review",
+        "class_mapping": {
+            "car": 0,
+            "bus": 1,
+            "truck": 2,
+            "motorcycle": 3,
+            "auto_rickshaw": 4,
+        },
+        "min_frame_interval_s": 0.0,
+        "export_images": True,
+    },
     "logging": {"level": "INFO"},
 }
 
@@ -334,6 +352,48 @@ def _validate(config: Mapping[str, Any]) -> None:
         output_dir = review.get("output_dir")
         if not isinstance(output_dir, str) or not output_dir.strip():
             raise ConfigError("review.output_dir must be a non-empty string")
+    al = config.get("active_learning")
+    if al is not None:
+        if not isinstance(al, Mapping):
+            raise ConfigError("active_learning must be a mapping")
+        out_dir = al.get("output_dir")
+        if not isinstance(out_dir, str) or not out_dir.strip():
+            raise ConfigError("active_learning.output_dir must be a non-empty string")
+        def_ver = al.get("default_version")
+        if not isinstance(def_ver, str) or not def_ver.strip():
+            raise ConfigError("active_learning.default_version must be a non-empty string")
+        strat = al.get("split_strategy")
+        if strat not in ("video", "time_block"):
+            raise ConfigError("active_learning.split_strategy must be 'video' or 'time_block'")
+        dur = al.get("time_block_duration_s")
+        if not (isinstance(dur, (int, float)) and dur > 0):
+            raise ConfigError("active_learning.time_block_duration_s must be a positive number")
+        ratios = al.get("split_ratios")
+        if not isinstance(ratios, Mapping):
+            raise ConfigError("active_learning.split_ratios must be a mapping")
+        for split_name, ratio in ratios.items():
+            if not isinstance(split_name, str) or not (isinstance(ratio, (int, float)) and 0.0 <= ratio <= 1.0):
+                raise ConfigError(f"active_learning.split_ratios value for '{split_name}' must be between 0.0 and 1.0")
+        if sum(float(r) for r in ratios.values()) <= 0:
+            raise ConfigError("active_learning.split_ratios sum must be greater than 0")
+        seed = al.get("seed")
+        if not isinstance(seed, int):
+            raise ConfigError("active_learning.seed must be an integer")
+        dup_policy = al.get("duplicate_policy")
+        if dup_policy not in ("latest_review", "keep_all"):
+            raise ConfigError("active_learning.duplicate_policy must be 'latest_review' or 'keep_all'")
+        cmap = al.get("class_mapping")
+        if not isinstance(cmap, Mapping) or not cmap:
+            raise ConfigError("active_learning.class_mapping must be a non-empty mapping")
+        for cls_name, cls_id in cmap.items():
+            if not isinstance(cls_name, str) or not (isinstance(cls_id, int) and cls_id >= 0):
+                raise ConfigError(f"active_learning.class_mapping invalid entry: {cls_name}: {cls_id}")
+        min_gap = al.get("min_frame_interval_s")
+        if not (isinstance(min_gap, (int, float)) and min_gap >= 0):
+            raise ConfigError("active_learning.min_frame_interval_s must be a non-negative number")
+        export_img = al.get("export_images")
+        if not isinstance(export_img, bool):
+            raise ConfigError("active_learning.export_images must be a boolean")
 
 
 

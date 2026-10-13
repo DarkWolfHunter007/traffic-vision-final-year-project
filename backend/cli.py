@@ -45,6 +45,11 @@ from backend.services.review import (
     get_manual_reviews,
     update_manual_review,
 )
+from backend.services.dataset import (
+    audit_dataset_leakage_from_path,
+    build_active_learning_dataset,
+    get_dataset_manifest,
+)
 from backend.structured_logging import configure_logging
 
 
@@ -171,6 +176,26 @@ def build_parser() -> argparse.ArgumentParser:
     gen_snip = commands.add_parser("generate-review-snippet", help="Generate before/after video snippet for a review item")
     gen_snip.add_argument("review_id", help="Manual review ID")
     gen_snip.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    export_ds = commands.add_parser("export-dataset", help="Export YOLO-format active-learning dataset from approved reviews")
+    export_ds.add_argument("--output-dir", type=Path, default=None, help="Output root directory")
+    export_ds.add_argument("--version", default=None, help="Dataset version identifier")
+    export_ds.add_argument("--run-id", default=None, help="Optional parent processing run ID filter")
+    export_ds.add_argument("--video-id", default=None, help="Optional video ID filter")
+    export_ds.add_argument("--split-strategy", choices=["video", "time_block"], default=None, help="Split grouping strategy")
+    export_ds.add_argument("--train-ratio", type=float, default=None, help="Train split ratio (0.0-1.0)")
+    export_ds.add_argument("--val-ratio", type=float, default=None, help="Val split ratio (0.0-1.0)")
+    export_ds.add_argument("--seed", type=int, default=None, help="Random seed for deterministic split assignment")
+    export_ds.add_argument("--no-images", action="store_true", help="Skip extracting image files, export labels and manifest only")
+    export_ds.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    show_manifest = commands.add_parser("show-dataset-manifest", help="Inspect an exported dataset manifest")
+    show_manifest.add_argument("path", type=Path, help="Dataset directory or manifest.json file path")
+    show_manifest.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
+
+    audit_leakage = commands.add_parser("audit-dataset-leakage", help="Audit an exported dataset for split leakage")
+    audit_leakage.add_argument("path", type=Path, help="Dataset directory or manifest.json file path")
+    audit_leakage.add_argument("--config", type=Path, default=REPOSITORY_ROOT / "configs" / "default.yaml")
     return parser
 
 
@@ -438,6 +463,34 @@ def main() -> None:
             repository_root=REPOSITORY_ROOT,
         )
         print(json.dumps({"review_id": args.review_id, "snippet_path": str(snip_path)}, sort_keys=True))
+        return
+    if args.command == "export-dataset":
+        ratios = None
+        if args.train_ratio is not None or args.val_ratio is not None:
+            tr = args.train_ratio if args.train_ratio is not None else 0.8
+            vr = args.val_ratio if args.val_ratio is not None else 0.2
+            ratios = {"train": tr, "val": vr, "test": 0.0}
+        result = build_active_learning_dataset(
+            output_dir=args.output_dir,
+            dataset_version=args.version,
+            run_id=args.run_id,
+            video_id=args.video_id,
+            split_ratios=ratios,
+            split_strategy=args.split_strategy,
+            seed=args.seed,
+            export_images=not args.no_images,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    if args.command == "show-dataset-manifest":
+        manifest_data = get_dataset_manifest(args.path)
+        print(json.dumps(manifest_data, sort_keys=True))
+        return
+    if args.command == "audit-dataset-leakage":
+        audit_res = audit_dataset_leakage_from_path(args.path)
+        print(json.dumps(audit_res, sort_keys=True))
         return
     result = ingest_video(
         args.video,

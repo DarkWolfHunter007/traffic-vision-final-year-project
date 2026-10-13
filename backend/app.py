@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from backend import __version__
+from backend.config import load_config
+from backend.services.dataset import (
+    audit_dataset_leakage_from_path,
+    build_active_learning_dataset,
+    get_dataset_manifest,
+)
 from backend.services.review import (
     create_manual_review,
     find_review_candidates,
@@ -52,6 +59,23 @@ class UpdateReviewRequest(BaseModel):
     corrected_bbox: BoundingBoxModel | None = None
     reviewer: str | None = None
     reason: str | None = None
+
+
+class ExportDatasetRequest(BaseModel):
+    output_dir: str | None = None
+    dataset_version: str | None = None
+    run_id: str | None = None
+    video_id: str | None = None
+    split_ratios: dict[str, float] | None = None
+    split_strategy: str | None = None
+    time_block_duration_s: float | None = None
+    seed: int | None = None
+    min_frame_interval_s: float | None = None
+    export_images: bool | None = True
+
+
+class AuditDatasetLeakageRequest(BaseModel):
+    dataset_path: str
 
 
 def create_app() -> FastAPI:
@@ -160,6 +184,45 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
         except RuntimeError as err:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err))
+
+    # Phase 11 Active-Learning Dataset Endpoints
+
+    @app.post("/datasets/export", status_code=status.HTTP_201_CREATED)
+    def export_dataset_endpoint(request: ExportDatasetRequest) -> dict[str, Any]:
+        try:
+            return build_active_learning_dataset(
+                output_dir=request.output_dir,
+                dataset_version=request.dataset_version,
+                run_id=request.run_id,
+                video_id=request.video_id,
+                split_ratios=request.split_ratios,
+                split_strategy=request.split_strategy,
+                time_block_duration_s=request.time_block_duration_s,
+                seed=request.seed,
+                min_frame_interval_s=request.min_frame_interval_s,
+                export_images=request.export_images,
+            )
+        except (ValueError, FileNotFoundError, RuntimeError) as err:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err))
+
+    @app.get("/datasets/{dataset_version}/manifest")
+    def get_manifest_endpoint(dataset_version: str, output_dir: str | None = Query(None)) -> dict[str, Any]:
+        cfg = load_config()
+        base_dir = output_dir or cfg.get("active_learning", {}).get("output_dir", "data/processed/datasets")
+        ds_path = Path(base_dir) / dataset_version
+        try:
+            return get_dataset_manifest(ds_path)
+        except FileNotFoundError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+
+    @app.post("/datasets/audit-leakage")
+    def audit_leakage_endpoint(request: AuditDatasetLeakageRequest) -> dict[str, Any]:
+        try:
+            return audit_dataset_leakage_from_path(request.dataset_path)
+        except FileNotFoundError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+        except (ValueError, RuntimeError) as err:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err))
 
     return app
 
