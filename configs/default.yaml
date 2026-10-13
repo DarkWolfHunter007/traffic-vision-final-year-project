@@ -43,6 +43,7 @@ tracking:
   match_thresh: 0.8
   track_buffer_seconds: 1.0
   fuse_score: true
+  chunk_frames: 500
 trajectories:
   ground_point_method: bottom_center
   max_gap_seconds: 1.0

@@ -39,6 +39,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "match_thresh": 0.8,
         "track_buffer_seconds": 1.0,
         "fuse_score": True,
+        "chunk_frames": 500,
     },
     "trajectories": {
         "ground_point_method": "bottom_center",
@@ -130,6 +131,9 @@ def _validate(config: Mapping[str, Any]) -> None:
         buffer_seconds = tracking.get("track_buffer_seconds")
         if not (isinstance(buffer_seconds, (int, float)) and buffer_seconds > 0):
             raise ConfigError("tracking.track_buffer_seconds must be a positive number")
+        chunk_frames = tracking.get("chunk_frames")
+        if chunk_frames is not None and not (isinstance(chunk_frames, int) and chunk_frames >= 1):
+            raise ConfigError("tracking.chunk_frames must be an integer >= 1")
     trajectories = config.get("trajectories")
     if trajectories is not None:
         if not isinstance(trajectories, Mapping):

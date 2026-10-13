@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 from backend.config import canonical_json, config_hash
 from backend.database.connection import database_connection, schema_version
@@ -38,6 +41,10 @@ def run_tracking(
 
     tracking_cfg = config.get("tracking", {})
     batch_size = max(1, int(tracking_cfg.get("batch_size") or config.get("streaming", {}).get("frame_batch_size", 500)))
+    chunk_frames_val = tracking_cfg.get("chunk_frames", 500)
+    if not isinstance(chunk_frames_val, int) or chunk_frames_val < 1:
+        raise ValueError("tracking.chunk_frames must be an integer >= 1")
+    chunk_size = chunk_frames_val
     run_id = str(uuid4())
 
     with database_connection(database_path) as connection:
@@ -115,11 +122,16 @@ def run_tracking(
             frame_cnt = bounds["frame_cnt"] if bounds and bounds["frame_cnt"] is not None else 0
 
             pending_rows: list[dict[str, Any]] = []
-            chunk_size = max(batch_size, 500)
 
             if frame_cnt > 0:
                 for chunk_start in range(min_fn, max_fn + 1, chunk_size):
                     chunk_end = min(chunk_start + chunk_size - 1, max_fn)
+                    logger.info(
+                        "Processing tracking chunk frames %d to %d (chunk_size=%d)",
+                        chunk_start,
+                        chunk_end,
+                        chunk_size,
+                    )
                     raw_detections = fetch_detections_for_tracking(
                         connection, parent_run_id, start_frame=chunk_start, end_frame=chunk_end
                     )

@@ -363,3 +363,314 @@ def test_audit_visualization_frame_range_validation(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="cannot be greater than end_frame"):
         render_video_visualization("run-1", cfg, tmp_path, start_frame=50, end_frame=10)
+
+
+def test_audit_one_frame_range_preview_and_video(tmp_path: Path) -> None:
+    """T2: Test start_frame == end_frame for both preview and video rendering.
+
+    Asserts: exactly 1 frame rendered, run status completed, frame count 1 recorded.
+    """
+    import subprocess
+    import shutil
+    import cv2
+    import json
+    from backend.services.visualization import (
+        render_preview_visualization,
+        render_video_visualization,
+    )
+    from backend.database.connection import bootstrap_database, database_connection
+    from backend.database.repository import insert_tracks
+    from backend.media import inspect_video, sha256_file
+    from backend.config import load_config
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg is required for synthetic video fixture")
+
+    syn_video = tmp_path / "syn_one_frame.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=blue:s=160x120:r=10:d=1", "-pix_fmt", "yuv420p", str(syn_video)],
+        check=True,
+        capture_output=True,
+    )
+
+    db_path = tmp_path / "traffic_one_frame.sqlite3"
+    bootstrap_database(db_path)
+    video_meta = inspect_video(syn_video)
+    video_sha = sha256_file(syn_video)
+
+    with database_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO videos (video_id, filename, path, sha256, fps_nominal, width, height, duration_s, frame_count, ingested_at)
+            VALUES ('vid-syn', 'syn.mp4', ?, ?, ?, ?, ?, ?, ?, '2026-10-11T00:00:00Z')
+            """,
+            (
+                str(syn_video),
+                video_sha,
+                video_meta.fps_nominal,
+                video_meta.width,
+                video_meta.height,
+                video_meta.duration_s,
+                video_meta.frame_count,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO processing_runs (run_id, video_id, config_hash, config_json, schema_version, code_version, source_video_sha256, started_at, status)
+            VALUES ('track-run-syn', 'vid-syn', 'cfg1', '{}', '1.0.0', 'code1', ?, '2026-10-11T00:00:00Z', 'completed')
+            """,
+            (video_sha,),
+        )
+        insert_tracks(
+            conn,
+            [
+                {
+                    "track_observation_id": "obs-syn-1",
+                    "run_id": "track-run-syn",
+                    "video_id": "vid-syn",
+                    "track_id": 1,
+                    "frame_number": 2,
+                    "timestamp_s": 0.2,
+                    "vehicle_class": "car",
+                    "confidence": 0.85,
+                    "x1": 20,
+                    "y1": 20,
+                    "x2": 60,
+                    "y2": 60,
+                    "ground_x": 40,
+                    "ground_y": 60,
+                    "world_x": None,
+                    "world_y": None,
+                    "calibration_id": None,
+                    "trajectory_status": "complete",
+                }
+            ],
+        )
+
+    config = load_config(overrides={"paths": {"database_path": str(db_path)}})
+
+    # 1. Preview rendering for a single frame
+    preview_out = render_preview_visualization(
+        "track-run-syn",
+        frame_number=2,
+        config=config,
+        repository_root=tmp_path,
+    )
+    assert preview_out.is_file()
+    img = cv2.imread(str(preview_out))
+    assert img is not None
+    assert img.shape[:2] == (video_meta.height, video_meta.width)
+
+    # 2. Video rendering where start_frame == end_frame (exactly 1 frame)
+    out_video = tmp_path / "one_frame.mp4"
+    vis_run_id = render_video_visualization(
+        "track-run-syn",
+        config,
+        repository_root=tmp_path,
+        output_path=out_video,
+        start_frame=2,
+        end_frame=2,
+    )
+    assert out_video.is_file()
+
+    with database_connection(db_path) as conn:
+        run_record = conn.execute(
+            "SELECT status, notes FROM processing_runs WHERE run_id = ?",
+            (vis_run_id,),
+        ).fetchone()
+
+    assert run_record is not None
+    assert run_record["status"] == "completed"
+    notes = json.loads(run_record["notes"])
+    assert notes["rendered_frames"] == 1
+    assert notes["start_frame"] == 2
+    assert notes["end_frame"] == 2
+
+
+def test_audit_trail_gap_exact_boundary() -> None:
+    """T3: Gap of exactly max_trail_gap_seconds is joined; gap just over splits.
+
+    Also tests the frames rule: gap of max_trail_gap_frames is joined; gap just over splits.
+    """
+    p1 = TrajectoryPoint(frame_number=0, timestamp_s=0.0, ground_x=20.0, ground_y=20.0, x1=10, y1=10, x2=30, y2=20)
+    # Exact seconds boundary: dt = 1.0s -> joined
+    p2_exact = TrajectoryPoint(frame_number=10, timestamp_s=1.0, ground_x=80.0, ground_y=80.0, x1=70, y1=70, x2=90, y2=80)
+    traj_exact = Trajectory(
+        run_id="r1", video_id="v1", track_id=1, points=[p1, p2_exact],
+        consensus_class="car", status="complete", status_reason="ok",
+        total_observations=2, missing_frames_count=9, duration_s=1.0, is_incomplete=False,
+    )
+    canvas = np.zeros((100, 100, 3), dtype=np.uint8)
+    rendered_exact = render_frame_annotations(
+        canvas, 10, [(traj_exact, p2_exact)],
+        VisualizationConfig(show_boxes=False, show_labels=False, show_trails=True, draw_ground_point=False, max_trail_gap_seconds=1.0),
+    )
+    # Midpoint (50, 50) has trail pixels because 1.0s is NOT > 1.0s
+    assert np.any(rendered_exact[48:52, 48:52] > 0)
+
+    # Just over seconds boundary: dt = 1.001s -> splits
+    p2_over = TrajectoryPoint(frame_number=10, timestamp_s=1.001, ground_x=80.0, ground_y=80.0, x1=70, y1=70, x2=90, y2=80)
+    traj_over = Trajectory(
+        run_id="r1", video_id="v1", track_id=2, points=[p1, p2_over],
+        consensus_class="car", status="complete", status_reason="ok",
+        total_observations=2, missing_frames_count=9, duration_s=1.001, is_incomplete=False,
+    )
+    canvas = np.zeros((100, 100, 3), dtype=np.uint8)
+    rendered_over = render_frame_annotations(
+        canvas, 10, [(traj_over, p2_over)],
+        VisualizationConfig(show_boxes=False, show_labels=False, show_trails=True, draw_ground_point=False, max_trail_gap_seconds=1.0),
+    )
+    # Midpoint (50, 50) is blank because 1.001s > 1.0s
+    assert not np.any(rendered_over[48:52, 48:52] > 0)
+
+    # Frames rule: exact gap = 10 frames -> joined
+    p_f1 = TrajectoryPoint(frame_number=0, timestamp_s=0.0, ground_x=20.0, ground_y=20.0, x1=10, y1=10, x2=30, y2=20)
+    p_f2_exact = TrajectoryPoint(frame_number=10, timestamp_s=0.1, ground_x=80.0, ground_y=80.0, x1=70, y1=70, x2=90, y2=80)
+    traj_f_exact = Trajectory(
+        run_id="r1", video_id="v1", track_id=3, points=[p_f1, p_f2_exact],
+        consensus_class="car", status="complete", status_reason="ok",
+        total_observations=2, missing_frames_count=9, duration_s=0.1, is_incomplete=False,
+    )
+    canvas = np.zeros((100, 100, 3), dtype=np.uint8)
+    rendered_f_exact = render_frame_annotations(
+        canvas, 10, [(traj_f_exact, p_f2_exact)],
+        VisualizationConfig(show_boxes=False, show_labels=False, show_trails=True, draw_ground_point=False, max_trail_gap_seconds=None, max_trail_gap_frames=10),
+    )
+    assert np.any(rendered_f_exact[48:52, 48:52] > 0)
+
+    # Frames rule: just over gap = 11 frames -> splits
+    p_f2_over = TrajectoryPoint(frame_number=11, timestamp_s=0.1, ground_x=80.0, ground_y=80.0, x1=70, y1=70, x2=90, y2=80)
+    traj_f_over = Trajectory(
+        run_id="r1", video_id="v1", track_id=4, points=[p_f1, p_f2_over],
+        consensus_class="car", status="complete", status_reason="ok",
+        total_observations=2, missing_frames_count=10, duration_s=0.1, is_incomplete=False,
+    )
+    canvas = np.zeros((100, 100, 3), dtype=np.uint8)
+    rendered_f_over = render_frame_annotations(
+        canvas, 11, [(traj_f_over, p_f2_over)],
+        VisualizationConfig(show_boxes=False, show_labels=False, show_trails=True, draw_ground_point=False, max_trail_gap_seconds=None, max_trail_gap_frames=10),
+    )
+    assert not np.any(rendered_f_over[48:52, 48:52] > 0)
+
+
+def test_audit_trail_gap_large_frame_stride_splits_all_samples() -> None:
+    """T3: When frame_stride spacing causes dt > 1.0s between normal samples, trails split at every sample."""
+    # Stride causes 1.5s between normal consecutive samples (0.0s, 1.5s, 3.0s)
+    pts = [
+        TrajectoryPoint(frame_number=0, timestamp_s=0.0, ground_x=20.0, ground_y=20.0, x1=10, y1=10, x2=30, y2=20),
+        TrajectoryPoint(frame_number=15, timestamp_s=1.5, ground_x=50.0, ground_y=50.0, x1=40, y1=40, x2=60, y2=50),
+        TrajectoryPoint(frame_number=30, timestamp_s=3.0, ground_x=80.0, ground_y=80.0, x1=70, y1=70, x2=90, y2=80),
+    ]
+    traj = Trajectory(
+        run_id="r1", video_id="v1", track_id=1, points=pts,
+        consensus_class="car", status="complete", status_reason="ok",
+        total_observations=3, missing_frames_count=0, duration_s=3.0, is_incomplete=False,
+    )
+    canvas = np.zeros((100, 100, 3), dtype=np.uint8)
+    # Default max_trail_gap_seconds=1.0
+    rendered = render_frame_annotations(
+        canvas, 30, [(traj, pts[-1])],
+        VisualizationConfig(show_boxes=False, show_labels=False, show_ids=False, show_confidences=False, show_trails=True, draw_ground_point=False, max_trail_gap_seconds=1.0),
+    )
+    # Because dt=1.5s > 1.0s at each step, trails split at every single sample.
+    # No multi-point segment exists, so canvas remains completely blank (0 trail pixels).
+    assert not np.any(rendered > 0)
+
+
+def test_audit_ground_point_tolerance() -> None:
+    """T4: Stored ground_x/ground_y off by 0.0009 accepted, by 0.0011 rejected, for x and y separately."""
+    base_row = {
+        "run_id": "r1", "video_id": "v1", "track_id": 1,
+        "frame_number": 0, "timestamp_s": 0.0,
+        "x1": 10.0, "y1": 10.0, "x2": 30.0, "y2": 40.0,
+    }
+
+    # 1. ground_x off by +0.0009 -> Accepted (not invalid)
+    row_x_acc = [dict(base_row, ground_x=20.0009, ground_y=40.0)]
+    assert build_trajectories(row_x_acc)[1].status != STATUS_INVALID
+
+    # 2. ground_y off by +0.0009 -> Accepted (not invalid)
+    row_y_acc = [dict(base_row, ground_x=20.0, ground_y=40.0009)]
+    assert build_trajectories(row_y_acc)[1].status != STATUS_INVALID
+
+    # 3. ground_x off by +0.0011 -> Rejected (STATUS_INVALID)
+    row_x_rej = [dict(base_row, ground_x=20.0011, ground_y=40.0)]
+    t_x_rej = build_trajectories(row_x_rej)[1]
+    assert t_x_rej.status == STATUS_INVALID
+    assert "Corrupt stored ground coordinates" in t_x_rej.status_reason
+
+    # 4. ground_y off by +0.0011 -> Rejected (STATUS_INVALID)
+    row_y_rej = [dict(base_row, ground_x=20.0, ground_y=40.0011)]
+    t_y_rej = build_trajectories(row_y_rej)[1]
+    assert t_y_rej.status == STATUS_INVALID
+    assert "Corrupt stored ground coordinates" in t_y_rej.status_reason
+
+
+def test_audit_interior_termination_boundary_margin() -> None:
+    """T5: Track ending exactly at margin_px (20.0), just inside, just outside: assert termination_reason."""
+    # 1. Exactly at margin: x1 = 20.0 (x1 <= margin_px is True -> boundary_exit)
+    rows_exact = [
+        {"run_id": "r1", "video_id": "v1", "track_id": 1, "frame_number": 1, "timestamp_s": 0.1, "x1": 30.0, "y1": 100.0, "x2": 70.0, "y2": 150.0},
+        {"run_id": "r1", "video_id": "v1", "track_id": 1, "frame_number": 2, "timestamp_s": 0.2, "x1": 25.0, "y1": 100.0, "x2": 65.0, "y2": 150.0},
+        {"run_id": "r1", "video_id": "v1", "track_id": 1, "frame_number": 3, "timestamp_s": 0.3, "x1": 20.0, "y1": 100.0, "x2": 60.0, "y2": 150.0},
+    ]
+    t_exact = build_trajectories(rows_exact, video_width=1280, video_height=720, last_video_frame=100)[1]
+    assert t_exact.termination_reason == "boundary_exit"
+    assert t_exact.status == STATUS_COMPLETE
+
+    # 2. Just inside margin (in boundary margin zone): x1 = 19.9 (x1 <= margin_px is True -> boundary_exit)
+    rows_inside = [
+        {"run_id": "r1", "video_id": "v1", "track_id": 2, "frame_number": 1, "timestamp_s": 0.1, "x1": 30.0, "y1": 100.0, "x2": 70.0, "y2": 150.0},
+        {"run_id": "r1", "video_id": "v1", "track_id": 2, "frame_number": 2, "timestamp_s": 0.2, "x1": 25.0, "y1": 100.0, "x2": 65.0, "y2": 150.0},
+        {"run_id": "r1", "video_id": "v1", "track_id": 2, "frame_number": 3, "timestamp_s": 0.3, "x1": 19.9, "y1": 100.0, "x2": 59.9, "y2": 150.0},
+    ]
+    t_inside = build_trajectories(rows_inside, video_width=1280, video_height=720, last_video_frame=100)[2]
+    assert t_inside.termination_reason == "boundary_exit"
+    assert t_inside.status == STATUS_COMPLETE
+
+    # 3. Just outside margin (in scene interior): x1 = 20.1 (x1 <= margin_px is False -> interior_termination)
+    rows_outside = [
+        {"run_id": "r1", "video_id": "v1", "track_id": 3, "frame_number": 1, "timestamp_s": 0.1, "x1": 30.0, "y1": 100.0, "x2": 70.0, "y2": 150.0},
+        {"run_id": "r1", "video_id": "v1", "track_id": 3, "frame_number": 2, "timestamp_s": 0.2, "x1": 25.0, "y1": 100.0, "x2": 65.0, "y2": 150.0},
+        {"run_id": "r1", "video_id": "v1", "track_id": 3, "frame_number": 3, "timestamp_s": 0.3, "x1": 20.1, "y1": 100.0, "x2": 60.1, "y2": 150.0},
+    ]
+    t_outside = build_trajectories(rows_outside, video_width=1280, video_height=720, last_video_frame=100)[3]
+    assert t_outside.termination_reason == "interior_termination"
+    assert t_outside.status == STATUS_FRAGMENTED
+
+
+def test_audit_stride_off_grid_gaps_current_behavior() -> None:
+    """T6: Test frame gaps that are not multiples of stride (stride 5: gaps 7, 8, 12).
+
+    Records current behavior:
+    - Gap 7: round(7/5) = round(1.4) = 1 step -> missing_frames_count = 0 (undercounts: missed frame 5).
+    - Gap 8: round(8/5) = round(1.6) = 2 steps -> missing_frames_count = 1.
+    - Gap 12: round(12/5) = round(2.4) = 2 steps -> missing_frames_count = 1 (undercounts: missed frames 5 and 10).
+    """
+    # 1. Stride 5, Gap 7 (frames 0 and 7)
+    rows_gap7 = [
+        {"run_id": "r1", "video_id": "v1", "track_id": 1, "frame_number": 0, "timestamp_s": 0.0, "x1": 10, "y1": 10, "x2": 20, "y2": 20},
+        {"run_id": "r1", "video_id": "v1", "track_id": 1, "frame_number": 7, "timestamp_s": 0.7, "x1": 30, "y1": 30, "x2": 40, "y2": 40},
+    ]
+    t7 = build_trajectories(rows_gap7, frame_stride=5)[1]
+    assert t7.missing_frames_count == 0
+    assert t7.diagnostics["raw_missing_frames"] == 6
+
+    # 2. Stride 5, Gap 8 (frames 0 and 8)
+    rows_gap8 = [
+        {"run_id": "r1", "video_id": "v1", "track_id": 2, "frame_number": 0, "timestamp_s": 0.0, "x1": 10, "y1": 10, "x2": 20, "y2": 20},
+        {"run_id": "r1", "video_id": "v1", "track_id": 2, "frame_number": 8, "timestamp_s": 0.8, "x1": 30, "y1": 30, "x2": 40, "y2": 40},
+    ]
+    t8 = build_trajectories(rows_gap8, frame_stride=5)[2]
+    assert t8.missing_frames_count == 1
+    assert t8.diagnostics["raw_missing_frames"] == 7
+
+    # 3. Stride 5, Gap 12 (frames 0 and 12)
+    rows_gap12 = [
+        {"run_id": "r1", "video_id": "v1", "track_id": 3, "frame_number": 0, "timestamp_s": 0.0, "x1": 10, "y1": 10, "x2": 20, "y2": 20},
+        {"run_id": "r1", "video_id": "v1", "track_id": 3, "frame_number": 12, "timestamp_s": 1.2, "x1": 30, "y1": 30, "x2": 40, "y2": 40},
+    ]
+    t12 = build_trajectories(rows_gap12, frame_stride=5)[3]
+    assert t12.missing_frames_count == 1
+    assert t12.diagnostics["raw_missing_frames"] == 11
+

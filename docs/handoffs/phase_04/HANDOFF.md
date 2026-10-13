@@ -31,6 +31,9 @@
 Added to `configs/default.yaml` and validated in `backend/config.py`:
 
 ```yaml
+tracking:
+  chunk_frames: 500                   # Streaming window batch chunk size (default 500 frames)
+
 trajectories:
   ground_point_method: bottom_center  # Civil engineering road-surface contact point
   max_gap_seconds: 1.0                # Gap threshold beyond which fragmentation is suspected
@@ -94,15 +97,15 @@ Status values strictly enforce the database check constraint `CHECK (trajectory_
 
 ## 6. Test Suite and Evidence
 
-The entire test regression suite passes with 69 total tests:
+The entire test regression suite passes with 76 total tests:
 
 ```text
 uv run pytest -v
-============================= 69 passed in 11.43s =============================
+============================= 76 passed in 12.28s =============================
 ```
 
 Focused test files:
-- `tests/test_phase_04_audit.py` (12 tests):
+- `tests/test_phase_04_audit.py` (18 tests):
   - Cross-run track ID collision rejection (`ValueError`).
   - Active status precedence over internal gaps (`status=fragmented`, `lifecycle=active`).
   - Motion trail gap breaking (no bridges drawn across multi-second gaps).
@@ -115,6 +118,12 @@ Focused test files:
   - Negative and non-finite timestamps rejection (`status=invalid`).
   - Interior termination semantics and uncertainty diagnostics.
   - Visualization frame range validation (`start_frame`, `end_frame`, `preview_frame`).
+  - **T2**: Single-frame range visualization (`start_frame == end_frame` renders exactly 1 frame, status completed).
+  - **T3**: Exact trail gap boundary joining ($\le 1.0s$ / $\le 10$ frames) vs splitting ($> 1.0s$ / $> 10$ frames).
+  - **T3**: Large frame stride spacing ($\Delta t > 1.0s$) splitting trails across all consecutive samples.
+  - **T4**: Ground-point tolerance acceptance ($\le 0.0009$) vs rejection ($\ge 0.0011$) for $x$ and $y$ independently.
+  - **T5**: Interior termination margin classification at `margin_px = 20.0` (`boundary_exit`), inside (`boundary_exit`), and outside (`interior_termination`).
+  - **T6**: Stride off-grid gap accounting under current `round(fn_gap / stride)` behavior (gaps 7, 8, 12).
 - `tests/test_trajectories.py` (14 tests):
   - Bottom-centre coordinate calculation.
   - Rejection of bbox centre and invalid methods.
@@ -138,12 +147,13 @@ Focused test files:
   - Failure cleanup and status update on simulated crash.
   - Zero-frame video visualization failure and cleanup.
   - CLI visualize argument validation (`--start-frame`, `--end-frame`, `--preview-frame`).
-- `tests/test_tracking_service.py` (5 tests):
+- `tests/test_tracking_service.py` (6 tests):
   - Canonical track persistence.
   - Bounded memory batch persistence.
   - Atomic rollback on database failure.
   - Missing/incomplete parent run rejection.
   - Windowed chunk streaming across chunk boundaries.
+  - **T1**: Multi-chunk streaming consistency across chunk boundaries with `chunk_frames = 3` on $\ge 12$ frame video matching `chunk_frames = 500`.
 
 ---
 

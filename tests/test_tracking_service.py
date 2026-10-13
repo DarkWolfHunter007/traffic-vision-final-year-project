@@ -230,3 +230,86 @@ def test_tracking_windowed_chunk_streaming(tmp_path: Path, source_video: Path) -
 
     assert run[0] == "completed"
     assert tracks >= 2
+
+
+def test_tracking_multichunk_boundary_consistency(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """T1: Verify streaming across chunk boundaries with chunk_frames=3 on >=12 frame video."""
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg is required for the synthetic media fixture")
+
+    # Create video of 15 frames (r=5, d=3) -> 5 chunks of 3 frames
+    long_video = tmp_path / "long_video.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=32x24:r=5:d=3", "-pix_fmt", "yuv420p", str(long_video)],
+        check=True,
+        capture_output=True,
+    )
+
+    database_chunks = tmp_path / "traffic_chunks_3.sqlite3"
+    database_default = tmp_path / "traffic_default_500.sqlite3"
+    model_path = tmp_path / "fake-weights.pt"
+    model_path.write_bytes(b"fixture-weights")
+
+    cfg_chunks = load_config(
+        overrides={
+            "paths": {"database_path": str(database_chunks)},
+            "streaming": {"frame_batch_size": 3},
+            "detection": {
+                "model": {"version": "fixture-v1", "path": str(model_path), "device": "cpu"},
+                "class_mapping": {"car": "car"},
+            },
+            "tracking": {"chunk_frames": 3, "batch_size": 3},
+        }
+    )
+    cfg_default = load_config(
+        overrides={
+            "paths": {"database_path": str(database_default)},
+            "streaming": {"frame_batch_size": 3},
+            "detection": {
+                "model": {"version": "fixture-v1", "path": str(model_path), "device": "cpu"},
+                "class_mapping": {"car": "car"},
+            },
+            "tracking": {"chunk_frames": 500, "batch_size": 3},
+        }
+    )
+
+    ingest_res_chunks = ingest_video(long_video, cfg_chunks, repository_root=tmp_path)
+    det_run_chunks = run_detection(ingest_res_chunks["run_id"], cfg_chunks, tmp_path, FakeDetector())
+
+    ingest_res_default = ingest_video(long_video, cfg_default, repository_root=tmp_path)
+    det_run_default = run_detection(ingest_res_default["run_id"], cfg_default, tmp_path, FakeDetector())
+
+    import logging
+    with caplog.at_level(logging.INFO):
+        caplog.clear()
+        track_run_chunks = run_tracking(det_run_chunks, cfg_chunks, tmp_path)
+
+    # (c) assert the chunk loop ran more than once (check log call)
+    chunk_logs = [rec.message for rec in caplog.records if "Processing tracking chunk frames" in rec.message]
+    assert len(chunk_logs) >= 4, f"Expected at least 4 chunk log calls, got {len(chunk_logs)}: {chunk_logs}"
+
+    track_run_default = run_tracking(det_run_default, cfg_default, tmp_path)
+
+    with sqlite3.connect(database_chunks) as conn:
+        rows_chunks = conn.execute(
+            "SELECT track_id, frame_number, vehicle_class, confidence, x1, y1, x2, y2, ground_x, ground_y "
+            "FROM tracks WHERE run_id = ? ORDER BY frame_number ASC",
+            (track_run_chunks,),
+        ).fetchall()
+
+    with sqlite3.connect(database_default) as conn:
+        rows_default = conn.execute(
+            "SELECT track_id, frame_number, vehicle_class, confidence, x1, y1, x2, y2, ground_x, ground_y "
+            "FROM tracks WHERE run_id = ? ORDER BY frame_number ASC",
+            (track_run_default,),
+        ).fetchall()
+
+    # (a) Assert persisted track observations and track IDs are identical
+    assert len(rows_chunks) >= 12
+    assert rows_chunks == rows_default
+
+    # (b) Assert the same track ID continues across every boundary
+    first_track_id = rows_chunks[0][0]
+    for row in rows_chunks:
+        assert row[0] == first_track_id, f"Track ID switched from {first_track_id} to {row[0]} at frame {row[1]}"
+
