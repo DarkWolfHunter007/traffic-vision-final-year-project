@@ -13,3 +13,8 @@ models/*
 !models/.gitkeep
 runs/*
 !runs/.gitkeep
+.uv-cache/
+.ultralytics/
+# Local configs are copied from the *.example.yaml files and tuned per site.
+configs/detection.yaml
+configs/tracker.yaml

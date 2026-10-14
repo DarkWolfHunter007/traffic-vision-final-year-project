@@ -12,6 +12,13 @@ dependencies = [
     "numpy>=1.26",
     "opencv-python-headless>=4.9",
     "PyYAML>=6.0",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+# YOLO detection. Pulls in PyTorch; see README for the GPU build on Windows.
+detect = [
+    "ultralytics>=8.4.177",  # uses predict(quantize=...)
 ]
 
 [dependency-groups]
@@ -21,6 +28,10 @@ dev = [
 
 [project.scripts]
 pattom = "pattom.cli:main"
+
+[tool.uv]
+# Keep uv's download cache inside the repository.
+cache-dir = ".uv-cache"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pattom"]

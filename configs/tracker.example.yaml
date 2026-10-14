@@ -1,0 +1,9 @@
+# Copy to configs/tracker.yaml. Starting values from the ByteTrack reference
+# implementation; tune on the test clip. Tracker choice is open (O7).
+name: bytetrack
+high_thresh: 0.5
+low_thresh: 0.1
+new_track_thresh: 0.6
+match_iou: 0.2
+low_match_iou: 0.5
+track_buffer_s: 1.0

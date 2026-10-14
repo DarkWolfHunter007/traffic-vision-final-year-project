@@ -8,7 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from pattom import prepare
-from pattom.paths import CALIBRATION
+from pattom.paths import CALIBRATION, REPO_ROOT
 from pattom.runmeta import sha256_file
 
 
@@ -38,6 +38,19 @@ def _undistort(args) -> None:
     lens = prepare.LensCalibration.load(Path(args.lens))
     meta = prepare.undistort_video(Path(args.video), Path(args.out), lens, args.slot)
     print(json.dumps(asdict(meta), indent=2))
+
+
+def _detect(args) -> None:
+    from pattom.detection import DetectionConfig, run_detection
+
+    out = run_detection(Path(args.video), args.slot, DetectionConfig.load(Path(args.config)))
+    print(out)
+
+
+def _track(args) -> None:
+    from pattom.tracking import TrackerConfig, run_tracking
+
+    print(run_tracking(Path(args.detections), TrackerConfig.load(Path(args.config))))
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -70,6 +83,17 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--lens", default=str(CALIBRATION / "lens.json"))
     s.add_argument("--slot", required=True)
     s.set_defaults(func=_undistort)
+
+    s = sub.add_parser("detect", help="run YOLO on a prepared video -> runs/<slot>/<video>/detections.csv")
+    s.add_argument("video")
+    s.add_argument("--slot", required=True)
+    s.add_argument("--config", default=str(REPO_ROOT / "configs" / "detection.yaml"))
+    s.set_defaults(func=_detect)
+
+    s = sub.add_parser("track", help="run ByteTrack on a detections.csv -> tracks.csv")
+    s.add_argument("detections")
+    s.add_argument("--config", default=str(REPO_ROOT / "configs" / "tracker.yaml"))
+    s.set_defaults(func=_track)
 
     args = p.parse_args(argv)
     args.func(args)
