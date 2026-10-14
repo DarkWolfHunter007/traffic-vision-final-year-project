@@ -432,3 +432,133 @@ def test_tp8_14_config_validation_enforces_constraints() -> None:
     # Invalid ground_point_method (must be bottom_center)
     with pytest.raises(ConfigError, match="speed.ground_point_method"):
         load_config(overrides={"speed": {"ground_point_method": "center"}})
+
+
+# ---------------------------------------------------------------------------
+# Phase 08 defect-fix value-checking tests (synthetic software fixtures)
+# ---------------------------------------------------------------------------
+
+
+def _traj_from_world(samples: list[tuple[float, float, float]], track_id: int = 1) -> Trajectory:
+    points = [
+        _make_trajectory_point_from_world(i, t, x, y) for i, (t, x, y) in enumerate(samples)
+    ]
+    return Trajectory(
+        run_id="software_run",
+        video_id="vid",
+        track_id=track_id,
+        points=points,
+        consensus_class="car",
+        status=STATUS_COMPLETE,
+        status_reason="exit",
+        total_observations=len(points),
+        missing_frames_count=0,
+        duration_s=samples[-1][0] - samples[0][0],
+        is_incomplete=False,
+    )
+
+
+def _run(traj: Trajectory, cfg: dict[str, Any] | None = None) -> list[SpeedObservation]:
+    return estimate_speeds_for_trajectory(traj, SOFTWARE_FIXTURE_H, "calib", "run", cfg)
+
+
+@pytest.mark.parametrize("fps", [10, 30, 60])
+@pytest.mark.parametrize("count", [3, 4, 5, 6, 30, 90])
+def test_d1_constant_velocity_exact_under_default_smoothing(fps: int, count: int) -> None:
+    speed = 3.0
+    samples = [(i / fps, 5.0, 1.0 + speed * i / fps) for i in range(count)]
+    obs = _run(_traj_from_world(samples))
+    assert obs[0].status == STATUS_UNAVAILABLE
+    for o in obs[1:]:
+        assert o.status == STATUS_VALID
+        assert o.speed_mps == pytest.approx(speed, abs=1e-3)
+        assert o.smoothing_window == 0.5
+
+
+def test_d1_short_post_gap_segment_not_zero_for_moving_car() -> None:
+    speed = 4.0
+    times = [0.0, 0.1, 0.2, 0.3, 0.4, 2.0, 2.1, 2.2]
+    samples = [(t, 5.0, 1.0 + speed * t) for t in times]
+    obs = _run(_traj_from_world(samples))
+    assert obs[5].status == STATUS_UNAVAILABLE and obs[5].speed_mps is None
+    for o in obs[6:]:
+        assert o.status == STATUS_VALID
+        assert o.speed_mps == pytest.approx(speed, abs=1e-3)
+    for o in obs[1:5]:
+        assert o.speed_mps == pytest.approx(speed, abs=1e-3)
+
+
+def test_d1_smoothing_never_bridges_gap_and_is_symmetric() -> None:
+    pts = [(0.0, 0.0, 0.0), (0.1, 1.0, 0.0), (0.2, 2.0, 0.0), (5.0, 100.0, 0.0), (5.1, 101.0, 0.0)]
+    out = smooth_trajectory_positions(pts, window_s=0.5, max_gap_s=1.0)
+    assert out[1][0] == pytest.approx(1.0)  # symmetric average of 0,1,2
+    assert out[3][0] == pytest.approx(100.0)  # not pulled toward pre-gap points
+    assert out[4][0] == pytest.approx(101.0)
+
+
+@pytest.mark.parametrize("fps", [10, 30, 60, 120])
+def test_d2_two_mps_not_stationary_at_any_fps(fps: int) -> None:
+    samples = [(i / fps, 5.0, 1.0 + 2.0 * i / fps) for i in range(fps)]
+    obs = _run(_traj_from_world(samples), {"speed": {"smoothing_method": "none"}})
+    for o in obs[1:]:
+        assert o.status == STATUS_VALID
+        assert o.speed_mps == pytest.approx(2.0, abs=1e-3)
+
+
+@pytest.mark.parametrize("fps", [10, 30, 60, 120])
+def test_d2_jitter_is_valid_zero_at_any_fps(fps: int) -> None:
+    samples = [(i / fps, 5.0 + (0.02 if i % 2 else -0.02), 10.0 + (0.02 if i % 2 else -0.02)) for i in range(fps)]
+    obs = _run(_traj_from_world(samples), {"speed": {"smoothing_method": "none"}})
+    for o in obs[1:]:
+        assert o.status == STATUS_VALID and o.speed_mps == 0.0 and o.speed_kmh == 0.0
+
+
+@pytest.mark.parametrize("fps", [30, 60])
+@pytest.mark.parametrize("smoothing", ["moving_average", "none"])
+def test_n1_edge_jitter_yields_zero_including_first_and_last_steps(fps: int, smoothing: str) -> None:
+    rng = np.random.default_rng(7)
+    jit = rng.uniform(-0.03, 0.03, size=(2 * fps, 2))
+    samples = [(i / fps, 5.0 + jit[i, 0], 10.0 + jit[i, 1]) for i in range(2 * fps)]
+    # force worst-case alternating extremes at the segment edges
+    samples[0] = (0.0, 5.0 - 0.03, 10.0 - 0.03)
+    samples[1] = (1 / fps, 5.0 + 0.03, 10.0 + 0.03)
+    samples[-2] = ((2 * fps - 2) / fps, 5.0 - 0.03, 10.0 - 0.03)
+    samples[-1] = ((2 * fps - 1) / fps, 5.0 + 0.03, 10.0 + 0.03)
+    obs = _run(_traj_from_world(samples), {"speed": {"smoothing_method": smoothing}})
+    for o in obs[1:]:
+        assert o.status == STATUS_VALID
+        assert o.speed_mps == 0.0
+
+
+def test_n1_real_slow_motion_preserved() -> None:
+    samples = [(i / 30, 5.0, 10.0 + 0.3 * i / 30) for i in range(90)]
+    obs = _run(_traj_from_world(samples))
+    for o in obs[1:]:
+        assert o.speed_mps == pytest.approx(0.3, abs=1e-3)
+
+
+def test_d3_raw_spike_marks_affected_outputs_invalid() -> None:
+    # 1 m/s steady with a single 20 m raw jump in one 30 fps step (600 m/s raw)
+    samples = []
+    for i in range(30):
+        y = 1.0 + 0.03 * i + (0.0 if i < 15 else 2.0)
+        samples.append((i / 30, 5.0, y))
+    # Smoothed step speed would stay under 45 m/s, but the raw step is 60 m/s
+    obs = _run(_traj_from_world(samples), {"speed": {"max_plausible_speed_mps": 45.0}})
+    invalid = [o for o in obs if o.status == STATUS_INVALID]
+    assert invalid, "spike must invalidate outputs whose window contains it"
+    for o in invalid:
+        assert o.speed_mps is None and o.speed_kmh is None
+    # far from the spike the speed is still valid
+    assert obs[3].status == STATUS_VALID
+    assert obs[-1].status == STATUS_VALID
+
+
+def test_d5_smoothing_window_null_when_not_applied() -> None:
+    samples = [(i / 10, 5.0, 1.0 + i / 10) for i in range(6)]
+    for cfg in (
+        {"speed": {"smoothing_method": "none"}},
+        {"speed": {"smoothing_window_s": 0.0}},
+    ):
+        assert all(o.smoothing_window is None for o in _run(_traj_from_world(samples), cfg))
+    assert all(o.smoothing_window == 0.5 for o in _run(_traj_from_world(samples)))

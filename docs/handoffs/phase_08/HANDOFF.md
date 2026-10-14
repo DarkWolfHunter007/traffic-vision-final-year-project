@@ -11,25 +11,27 @@
   - Transforms bottom-centre ground contact points `(ground_x, ground_y)` into ground-plane world coordinates $(X, Y)$ in metres via planar homography $H$ from Phase 07.
   - Enforces `ground_point_method = 'bottom_center'`; bounding-box centres are strictly rejected.
   - Uses authoritative decoder media timestamps (`timestamp_s` / `pts_s`), never nominal FPS.
-  - Applies position smoothing if `smoothing_method == 'moving_average'` and `smoothing_window_s > 0`.
+  - Applies symmetric centred moving-average position smoothing if `smoothing_method == 'moving_average'` and `smoothing_window_s > 0`; the half-width shrinks to the largest symmetric span inside one gap-free segment and within the window (never bridges gaps), so constant velocity gives the exact true speed for any track length and frame rate.
   - Flags initial track observation ($i = 0$) as `status = 'unavailable'` (no preceding time interval $\Delta t$).
   - Flags non-monotonic or zero timestamps ($\Delta t \le 0$) as `status = 'invalid'`.
   - Flags observation gaps ($\Delta t > \text{max_gap_seconds}$) as `status = 'unavailable'`.
   - Flags short tracks ($< \text{min_track_points}$) as `status = 'unavailable'`.
-  - Distinguishes stationary vehicles from sensor noise: displacements $\Delta d < \text{min_displacement_m}$ evaluate to valid speed 0.0 m/s (0.0 km/h) rather than phantom movement.
-  - Flags implausible speed jumps ($v > \text{max_plausible_speed_mps}$) as `status = 'invalid'`.
+  - Stationary rule (frame-rate independent): speed over a reference span of at least `STATIONARY_REFERENCE_S = 0.5` s of track time (raw positions, clipped to the gap-free segment) below `min_displacement_m / 0.5` m/s gives valid 0.0 m/s / 0.0 km/h. Because the decision uses a time span rather than a single step, jitter at segment edges (where smoothing cannot be applied) also yields 0.0 at any fps. Segments shorter than 0.5 s use the whole segment.
+  - Flags implausible speeds (> `max_plausible_speed_mps`) as `status = 'invalid'`, checking both the smoothed step speed and the raw unsmoothed step speed; every output whose smoothing window contains a flagged raw step is invalid.
+  - `smoothing_window` is stored NULL when smoothing is not applied (method `'none'` or window 0).
+  - Observation values (`speed_mps`, `speed_kmh`) are rounded to 4 decimal places; aggregate stats are rounded to 2.
   - Sets `speed_mps = None` and `speed_kmh = None` whenever status is `'unavailable'` or `'invalid'`; never fabricates zero or default measurements for missing research values.
 - `estimate_speeds_for_trajectories(trajectories, homography_matrix, calibration_id, run_id, config=None)`: Batch wrapper applying speed estimation across a collection of trajectories.
 
 ### Speed Estimation Service (`backend.services.speed`)
-- `run_speed_estimation(parent_run_id, calibration_id=None, config=None, repository_root=None, connection=None)`: Orchestrates speed estimation for a completed tracking parent run. Validates calibration acceptance (`calibration_runs.accepted = 1`), automatically resolves latest accepted calibration if `calibration_id` is omitted, creates a child `processing_runs` record with full provenance, reconstructs trajectories via Phase 04 `build_trajectories()`, calculates speeds, persists batch records to `speed_observations`, updates run status to `'completed'`, and returns execution summary statistics.
+- `run_speed_estimation(parent_run_id, calibration_id=None, config=None, repository_root=None, connection=None)`: Orchestrates speed estimation for a completed tracking parent run. Requires the parent to be a completed tracking run (rows in `tracks`, or notes starting `Phase 03 ByteTrack`). Validates calibration acceptance (`calibration_runs.accepted = 1`) and that an explicit calibration's `video_id` equals the parent run's `video_id`; automatically resolves latest accepted calibration if `calibration_id` is omitted, creates a child `processing_runs` record with full provenance, reconstructs trajectories via Phase 04 `build_trajectories()`, calculates speeds, persists batch records to `speed_observations` inside a SAVEPOINT (a failed insert leaves zero rows, marks the run `'failed'`, and never rolls back unrelated pending work on a caller-supplied connection; the service itself commits its own run rows), updates run status to `'completed'`, and returns execution summary statistics.
 - `get_speed_observations(run_id, track_id=None, limit=None, config=None, repository_root=None, connection=None)`: Queries stored speed observations and aggregate summary metrics for a speed run or vehicle track.
 
 ### Repository Operations (`backend.database.repository`)
 - `insert_speed_observations(connection, rows)`: Batch inserts records into `speed_observations`.
 - `fetch_speed_observations_for_run(connection, run_id, track_id=None)`: Fetches speed observations for a run, optionally filtered by vehicle track ID.
 - `fetch_speed_observation_stats(connection, run_id)`: Aggregates counts (total, valid, unavailable, invalid) and computes mean/max speeds in km/h and m/s.
-- `update_tracks_world_coordinates(connection, updates)`: Batch updates `tracks` table with `world_x`, `world_y`, and `calibration_id`.
+- World coordinates are NOT persisted: `tracks.world_x/world_y/calibration_id` remain NULL (the previously added, unused `update_tracks_world_coordinates` helper was removed). Speed observations carry `calibration_id` only.
 
 ### CLI Commands (`backend.cli`)
 - `traffic-vision estimate-speed PARENT_RUN_ID [--calibration-id CALIBRATION_ID] [--config CONFIG]`: Executes calibrated speed estimation for a tracking parent run.
@@ -47,7 +49,7 @@
 | `backend/config.py` | Modified | Added default speed configuration and schema validation in `_validate()`. |
 | `backend/speed.py` | Created | Pure calibrated speed estimation math, position smoothing, unit conversions, and quality flagging. |
 | `backend/services/speed.py` | Created | Service orchestrating speed estimation runs, provenance recording, calibration verification, and query APIs. |
-| `backend/database/repository.py` | Modified | Added repository CRUD and aggregate query functions for `speed_observations` and track world coordinates. |
+| `backend/database/repository.py` | Modified | Added repository insert/fetch/aggregate functions for `speed_observations`. |
 | `backend/cli.py` | Modified | Added `estimate-speed` and `show-speed` CLI subcommands and execution branches. |
 | `tests/test_speed.py` | Created | Unit tests for pure speed logic, unit conversions, constant velocity, timestamp gaps, jitter filtering, outlier cutoff, and config validation. |
 | `tests/test_speed_service.py` | Created | Integration tests for database persistence, calibration invariants, target resolution, and CLI commands. |
@@ -68,7 +70,7 @@ No schema changes were required. The canonical table `speed_observations` in `ba
   - `speed_kmh`: Speed in kilometres per hour ($= \text{speed\_mps} \times 3.6$), or `NULL` when status is not `'valid'`.
   - `calibration_id`: Foreign key referencing accepted `calibration_runs(calibration_id)`.
   - `status`: Observation status, strictly constrained by CHECK constraint `CHECK (status IN ('valid', 'invalid', 'unavailable'))`.
-  - `smoothing_window`: Duration in seconds of temporal smoothing window.
+  - `smoothing_window`: Duration in seconds of temporal smoothing window; NULL when smoothing not applied.
   - `ground_point_method`: Projection contact point method, default `'bottom_center'`.
 
 ---
@@ -103,45 +105,14 @@ Validated in `backend/config.py`:
 Running `uv run pytest -q`:
 
 ```text
-........................................................................ [ 52%]
-..................................................................       [100%]
-138 passed in 20.77s
+........................................................................ [ 25%]
+........................................................................ [ 51%]
+........................................................................ [ 77%]
+..............................................................           [100%]
+278 passed in 23.22s
 ```
 
-Running `uv run pytest tests/test_speed.py tests/test_speed_service.py -v`:
-
-```text
-============================= test session starts =============================
-platform win32 -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- D:\Work\Personal\traffic-vision-final-year-project\.venv\Scripts\python.exe
-cachedir: .pytest_cache
-rootdir: D:\Work\Personal\traffic-vision-final-year-project
-configfile: pyproject.toml
-plugins: anyio-4.15.1
-collecting ... collected 18 items
-
-tests/test_speed.py::test_tp8_01_unit_conversions PASSED                 [  5%]
-tests/test_speed.py::test_tp8_02_constant_velocity_matches_ground_truth PASSED [ 11%]
-tests/test_speed.py::test_tp8_03_authoritative_timestamps_vs_nominal_fps PASSED [ 16%]
-tests/test_speed.py::test_tp8_04_initial_point_status_unavailable PASSED [ 22%]
-tests/test_speed.py::test_tp8_05_timestamp_gap_rule PASSED               [ 27%]
-tests/test_speed.py::test_tp8_06_non_monotonic_and_zero_dt_marked_invalid PASSED [ 33%]
-tests/test_speed.py::test_tp8_07_short_tracks_marked_unavailable PASSED  [ 38%]
-tests/test_speed.py::test_tp8_08_stationary_vehicle_and_jitter_filtering PASSED [ 44%]
-tests/test_speed.py::test_tp8_09_implausible_speed_outlier_rejection PASSED [ 50%]
-tests/test_speed.py::test_tp8_10_deterministic_position_smoothing PASSED [ 55%]
-tests/test_speed.py::test_uncalibrated_point_projection_failure_marked_invalid PASSED [ 61%]
-tests/test_speed.py::test_invalid_trajectory_status_marked_invalid PASSED [ 66%]
-tests/test_speed.py::test_tp8_14_config_validation_enforces_constraints PASSED [ 72%]
-tests/test_speed_service.py::test_tp8_11_database_persistence_and_provenance PASSED [ 77%]
-tests/test_speed_service.py::test_tp8_12_unaccepted_and_missing_calibration_rejected PASSED [ 83%]
-tests/test_speed_service.py::test_auto_resolve_latest_accepted_calibration PASSED [ 88%]
-tests/test_speed_service.py::test_missing_parent_run_rejected PASSED     [ 94%]
-tests/test_speed_service.py::test_tp8_13_service_end_to_end_and_cli_commands PASSED [100%]
-
-============================= 18 passed in 4.10s ==============================
-```
-
-All 120 prior tests plus 18 new Phase 08 tests passed (138 tests total).
+Phase 08 tests: `tests/test_speed.py` and `tests/test_speed_service.py` (value-checking tests for D1-D9, N1, N2).
 
 ---
 

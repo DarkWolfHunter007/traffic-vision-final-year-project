@@ -608,19 +608,6 @@ def fetch_speed_observation_stats(connection: sqlite3.Connection, run_id: str) -
     }
 
 
-def update_tracks_world_coordinates(
-    connection: sqlite3.Connection, updates: Iterable[dict[str, object]]
-) -> None:
-    connection.executemany(
-        """
-        UPDATE tracks
-        SET world_x = :world_x, world_y = :world_y, calibration_id = :calibration_id
-        WHERE track_observation_id = :track_observation_id
-        """,
-        updates,
-    )
-
-
 def insert_stop_events(connection: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
     connection.executemany(
         """

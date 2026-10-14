@@ -76,6 +76,16 @@ def run_speed_estimation(
         if parent["status"] != "completed":
             raise ValueError(f"Parent tracking run is not completed (status={parent['status']})")
 
+        has_tracks = conn.execute(
+            "SELECT 1 FROM tracks WHERE run_id = ? LIMIT 1", (parent_run_id,)
+        ).fetchone()
+        is_tracking_note = str(parent["notes"] or "").startswith("Phase 03 ByteTrack")
+        if has_tracks is None and not is_tracking_note:
+            raise ValueError(
+                f"Parent run {parent_run_id} is not a tracking run (no track observations); "
+                "speed estimation requires a completed tracking parent run"
+            )
+
         video_id = str(parent["video_id"])
         video = conn.execute(
             "SELECT video_id, width, height, duration_s, frame_count FROM videos WHERE video_id = ?",
@@ -95,6 +105,11 @@ def run_speed_estimation(
             calib_row = fetch_calibration_run_by_id(conn, calibration_id)
             if calib_row is None:
                 raise ValueError(f"Calibration run '{calibration_id}' not found")
+            if str(calib_row["video_id"]) != video_id:
+                raise ValueError(
+                    f"Calibration run '{calibration_id}' belongs to video '{calib_row['video_id']}', "
+                    f"not the parent run's video '{video_id}'"
+                )
             if int(calib_row["accepted"]) != 1:
                 raise ValueError(
                     f"Calibration run '{calibration_id}' is not accepted (accepted=0); "
@@ -140,6 +155,8 @@ def run_speed_estimation(
         )
         conn.commit()
 
+        savepoint = "speed_insert_" + uuid4().hex
+        conn.execute(f"SAVEPOINT {savepoint}")
         try:
             # Fetch tracks and reconstruct trajectories
             tracks_raw = fetch_tracks_for_run(conn, parent_run_id)
@@ -168,6 +185,7 @@ def run_speed_estimation(
 
             # Batch insert into speed_observations
             insert_speed_observations(conn, all_rows)
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
 
             # Mark run as completed
             completed_ts = _utc_now()
@@ -193,13 +211,23 @@ def run_speed_estimation(
             }
 
         except Exception as err:
+            # Undo only this service's inserts; unrelated pending work on a
+            # caller-owned connection is preserved.
+            try:
+                conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            except sqlite3.Error:
+                if owns_connection:
+                    conn.rollback()
             update_run_status(conn, run_id, "failed", completed_at=_utc_now(), notes=str(err))
             conn.commit()
             raise
 
     if connection is not None:
+        owns_connection = False
         return _execute(connection)
 
+    owns_connection = True
     with database_connection(database_path) as conn:
         return _execute(conn)
 

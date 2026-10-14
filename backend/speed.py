@@ -6,6 +6,20 @@ Provides pure mathematical primitives and trajectory transformations for:
 - Deterministic temporal position smoothing without bridging observation gaps.
 - Quality flagging for gaps, short tracks, non-monotonic timestamps, stationary jitter, and outliers.
 - Unit conversions between m/s and km/h.
+
+Rules (frame-rate independent):
+- Smoothing is a symmetric centred moving average; the half-width shrinks to the
+  largest symmetric span that stays inside one gap-free segment and inside the
+  window, so constant velocity yields the exact true speed. Gaps are never bridged.
+- Stationary rule: a step is stationary (valid 0.0 m/s) when the raw-position speed
+  measured over a reference span of at least STATIONARY_REFERENCE_S seconds of track
+  time (clipped to the gap-free segment) is below min_displacement_m / STATIONARY_REFERENCE_S.
+  Using a time-based span (not a single step) keeps jitter at segment edges at 0.0
+  regardless of frame rate. Segments shorter than the reference use the whole segment.
+- Outliers: the raw unsmoothed step speed is also compared with max_plausible_speed_mps;
+  every output whose smoothing window contains a flagged step is marked invalid.
+- smoothing_window is NULL when smoothing is not applied (method 'none' or window 0).
+- Values are rounded to 4 decimal places.
 """
 
 from __future__ import annotations
@@ -24,6 +38,8 @@ from backend.trajectories import STATUS_INVALID as TRAJ_STATUS_INVALID, Trajecto
 STATUS_VALID = "valid"
 STATUS_INVALID = "invalid"
 STATUS_UNAVAILABLE = "unavailable"
+
+STATIONARY_REFERENCE_S = 0.5
 
 VALID_SPEED_STATUSES: frozenset[str] = frozenset(
     {STATUS_VALID, STATUS_INVALID, STATUS_UNAVAILABLE}
@@ -75,67 +91,58 @@ def kmh_to_mps(speed_kmh: float) -> float:
     return round(float(speed_kmh) / 3.6, 4)
 
 
+def _smooth_with_extent(
+    points: Sequence[tuple[float, float, float]],
+    window_s: float,
+    max_gap_s: float,
+) -> list[tuple[float, float, int, int]]:
+    n = len(points)
+    if n == 0:
+        return []
+    if n == 1 or window_s <= 0.0:
+        return [(p[1], p[2], i, i) for i, p in enumerate(points)]
+
+    half_window = window_s / 2.0
+    eps = 1e-9
+
+    segments: list[list[int]] = []
+    current: list[int] = [0]
+    for i in range(1, n):
+        dt = points[i][0] - points[i - 1][0]
+        if 0 < dt <= max_gap_s:
+            current.append(i)
+        else:
+            segments.append(current)
+            current = [i]
+    segments.append(current)
+
+    out: list[tuple[float, float, int, int] | None] = [None] * n
+    for seg in segments:
+        m = len(seg)
+        for pos in range(m):
+            idx = seg[pos]
+            t_i = points[idx][0]
+            k = 0
+            while (
+                pos - k - 1 >= 0
+                and pos + k + 1 < m
+                and points[seg[pos + k + 1]][0] - t_i <= half_window + eps
+                and t_i - points[seg[pos - k - 1]][0] <= half_window + eps
+            ):
+                k += 1
+            members = seg[pos - k : pos + k + 1]
+            mean_x = sum(points[j][1] for j in members) / len(members)
+            mean_y = sum(points[j][2] for j in members) / len(members)
+            out[idx] = (mean_x, mean_y, members[0], members[-1])
+    return [o for o in out if o is not None]
+
+
 def smooth_trajectory_positions(
     points: Sequence[tuple[float, float, float]],
     window_s: float = 0.5,
     max_gap_s: float = 1.0,
 ) -> list[tuple[float, float]]:
-    """Apply deterministic centered moving average smoothing to world coordinates.
-
-    Parameters:
-        points: Sequence of (timestamp_s, world_x, world_y) tuples.
-        window_s: Temporal smoothing window in seconds (centered window [t - w/2, t + w/2]).
-        max_gap_s: Maximum temporal gap beyond which continuous smoothing is broken.
-
-    Returns:
-        List of smoothed (world_x, world_y) tuples matching input length.
-    """
-    n = len(points)
-    if n == 0:
-        return []
-    if n == 1 or window_s <= 0.0:
-        return [(p[1], p[2]) for p in points]
-
-    half_window = window_s / 2.0
-    smoothed: list[tuple[float, float]] = []
-
-    # Segment points by temporal gaps to prevent smoothing across unobserved intervals
-    segments: list[list[int]] = []
-    current_segment: list[int] = [0]
-
-    for i in range(1, n):
-        dt = points[i][0] - points[i - 1][0]
-        if 0 < dt <= max_gap_s:
-            current_segment.append(i)
-        else:
-            segments.append(current_segment)
-            current_segment = [i]
-    segments.append(current_segment)
-
-    # Map each index to its containing segment
-    idx_to_segment: dict[int, list[int]] = {}
-    for seg in segments:
-        for idx in seg:
-            idx_to_segment[idx] = seg
-
-    for i in range(n):
-        t_i = points[i][0]
-        seg = idx_to_segment[i]
-
-        # Select indices within the centered temporal window within the same continuous segment
-        neighbors = [
-            idx for idx in seg
-            if abs(points[idx][0] - t_i) <= half_window
-        ]
-
-        if neighbors:
-            mean_x = sum(points[idx][1] for idx in neighbors) / len(neighbors)
-            mean_y = sum(points[idx][2] for idx in neighbors) / len(neighbors)
-            smoothed.append((mean_x, mean_y))
-        else:
-            smoothed.append((points[i][1], points[i][2]))
-
-    return smoothed
+    return [(x, y) for x, y, _, _ in _smooth_with_extent(points, window_s, max_gap_s)]
 
 
 def estimate_speeds_for_trajectory(
@@ -165,6 +172,8 @@ def estimate_speeds_for_trajectory(
     min_displacement_m = float(speed_cfg.get("min_displacement_m", 0.1))
     max_plausible_speed_mps = float(speed_cfg.get("max_plausible_speed_mps", 45.0))
     ground_point_method = str(speed_cfg.get("ground_point_method", "bottom_center"))
+    smoothing_active = smoothing_method == "moving_average" and window_s > 0.0
+    window_out: float | None = window_s if smoothing_active else None
 
     pts = trajectory.points
     n = len(pts)
@@ -184,7 +193,7 @@ def estimate_speeds_for_trajectory(
                 speed_kmh=None,
                 calibration_id=calibration_id,
                 status=STATUS_INVALID,
-                smoothing_window=window_s,
+                smoothing_window=window_out,
                 ground_point_method=ground_point_method,
                 world_x=None,
                 world_y=None,
@@ -217,7 +226,7 @@ def estimate_speeds_for_trajectory(
                 speed_kmh=None,
                 calibration_id=calibration_id,
                 status=STATUS_INVALID if world_coords[idx] is None else STATUS_UNAVAILABLE,
-                smoothing_window=window_s,
+                smoothing_window=window_out,
                 ground_point_method=ground_point_method,
                 world_x=world_coords[idx][0] if world_coords[idx] is not None else None,
                 world_y=world_coords[idx][1] if world_coords[idx] is not None else None,
@@ -226,19 +235,69 @@ def estimate_speeds_for_trajectory(
         ]
 
     # Apply position smoothing across valid projected points
-    if smoothing_method == "moving_average" and window_s > 0.0:
+    extents: list[tuple[int, int]] = [(i, i) for i in range(n)]
+    if smoothing_active:
         valid_indices = [i for i, c in enumerate(world_coords) if c is not None]
         valid_tuples = [
             (pts[i].timestamp_s, world_coords[i][0], world_coords[i][1])  # type: ignore[index]
             for i in valid_indices
         ]
-        smoothed_tuples = smooth_trajectory_positions(valid_tuples, window_s=window_s, max_gap_s=max_gap_s)
+        smoothed = _smooth_with_extent(valid_tuples, window_s=window_s, max_gap_s=max_gap_s)
 
         effective_coords: list[tuple[float, float] | None] = list(world_coords)
-        for orig_idx, sm in zip(valid_indices, smoothed_tuples):
-            effective_coords[orig_idx] = sm
+        for orig_idx, (sx, sy, lo, hi) in zip(valid_indices, smoothed):
+            effective_coords[orig_idx] = (sx, sy)
+            extents[orig_idx] = (valid_indices[lo], valid_indices[hi])
     else:
         effective_coords = world_coords
+
+    # Gap-free segments over raw projected points for the stationary reference span
+    seg_of: dict[int, list[int]] = {}
+    cur_seg: list[int] = []
+    last_valid: int | None = None
+    for i in range(n):
+        if world_coords[i] is None:
+            last_valid = None
+            cur_seg = []
+            continue
+        if last_valid is not None:
+            d = pts[i].timestamp_s - pts[last_valid].timestamp_s
+            if not (0 < d <= max_gap_s):
+                cur_seg = []
+        cur_seg.append(i)
+        seg_of[i] = cur_seg
+        last_valid = i
+
+    def _reference_speed(i: int) -> float:
+        seg = seg_of[i]
+        b = seg.index(i)
+        pos0 = b
+        a = b - 1
+        while pts[seg[b]].timestamp_s - pts[seg[a]].timestamp_s < STATIONARY_REFERENCE_S - 1e-9:
+            can_lo = a > 0
+            can_hi = b < len(seg) - 1
+            if not can_lo and not can_hi:
+                break
+            if can_lo and (not can_hi or (b - pos0) >= (pos0 - 1 - a)):
+                a -= 1
+            else:
+                b += 1
+        c0 = world_coords[seg[a]]
+        c1 = world_coords[seg[b]]
+        span = pts[seg[b]].timestamp_s - pts[seg[a]].timestamp_s
+        return math.hypot(c1[0] - c0[0], c1[1] - c0[1]) / span  # type: ignore[index]
+
+    # Raw (unsmoothed) outlier steps: step s joins raw points s-1 and s
+    flagged_steps: list[int] = []
+    for s_idx in range(1, n):
+        c0, c1 = world_coords[s_idx - 1], world_coords[s_idx]
+        if c0 is None or c1 is None:
+            continue
+        raw_dt = pts[s_idx].timestamp_s - pts[s_idx - 1].timestamp_s
+        if raw_dt <= 0 or raw_dt > max_gap_s:
+            continue
+        if math.hypot(c1[0] - c0[0], c1[1] - c0[1]) / raw_dt > max_plausible_speed_mps:
+            flagged_steps.append(s_idx)
 
     observations: list[SpeedObservation] = []
 
@@ -263,7 +322,7 @@ def estimate_speeds_for_trajectory(
                     speed_kmh=None,
                     calibration_id=calibration_id,
                     status=STATUS_INVALID,
-                    smoothing_window=window_s,
+                    smoothing_window=window_out,
                     ground_point_method=ground_point_method,
                     world_x=None,
                     world_y=None,
@@ -284,7 +343,7 @@ def estimate_speeds_for_trajectory(
                     speed_kmh=None,
                     calibration_id=calibration_id,
                     status=STATUS_UNAVAILABLE,
-                    smoothing_window=window_s,
+                    smoothing_window=window_out,
                     ground_point_method=ground_point_method,
                     world_x=curr_wx,
                     world_y=curr_wy,
@@ -308,7 +367,7 @@ def estimate_speeds_for_trajectory(
                     speed_kmh=None,
                     calibration_id=calibration_id,
                     status=STATUS_UNAVAILABLE,
-                    smoothing_window=window_s,
+                    smoothing_window=window_out,
                     ground_point_method=ground_point_method,
                     world_x=curr_wx,
                     world_y=curr_wy,
@@ -331,7 +390,7 @@ def estimate_speeds_for_trajectory(
                     speed_kmh=None,
                     calibration_id=calibration_id,
                     status=STATUS_INVALID,
-                    smoothing_window=window_s,
+                    smoothing_window=window_out,
                     ground_point_method=ground_point_method,
                     world_x=curr_wx,
                     world_y=curr_wy,
@@ -352,7 +411,7 @@ def estimate_speeds_for_trajectory(
                     speed_kmh=None,
                     calibration_id=calibration_id,
                     status=STATUS_UNAVAILABLE,
-                    smoothing_window=window_s,
+                    smoothing_window=window_out,
                     ground_point_method=ground_point_method,
                     world_x=curr_wx,
                     world_y=curr_wy,
@@ -366,7 +425,12 @@ def estimate_speeds_for_trajectory(
         disp_m = math.hypot(dx, dy)
 
         # Stationary vehicle jitter threshold
-        if disp_m < min_displacement_m:
+        lo_ext = min(extents[i - 1][0], extents[i][0])
+        hi_ext = max(extents[i - 1][1], extents[i][1])
+        raw_outlier = any(lo_ext <= st - 1 and st <= hi_ext for st in flagged_steps)
+        stationary = _reference_speed(i) < (min_displacement_m / STATIONARY_REFERENCE_S)
+
+        if not raw_outlier and stationary:
             observations.append(
                 SpeedObservation(
                     speed_observation_id=str(uuid4()),
@@ -378,7 +442,7 @@ def estimate_speeds_for_trajectory(
                     speed_kmh=0.0,
                     calibration_id=calibration_id,
                     status=STATUS_VALID,
-                    smoothing_window=window_s,
+                    smoothing_window=window_out,
                     ground_point_method=ground_point_method,
                     world_x=curr_wx,
                     world_y=curr_wy,
@@ -390,7 +454,7 @@ def estimate_speeds_for_trajectory(
         v_mps = disp_m / dt
 
         # Outlier rejection for implausibly fast jumps
-        if v_mps > max_plausible_speed_mps:
+        if raw_outlier or v_mps > max_plausible_speed_mps:
             observations.append(
                 SpeedObservation(
                     speed_observation_id=str(uuid4()),
@@ -402,7 +466,7 @@ def estimate_speeds_for_trajectory(
                     speed_kmh=None,
                     calibration_id=calibration_id,
                     status=STATUS_INVALID,
-                    smoothing_window=window_s,
+                    smoothing_window=window_out,
                     ground_point_method=ground_point_method,
                     world_x=curr_wx,
                     world_y=curr_wy,
@@ -422,7 +486,7 @@ def estimate_speeds_for_trajectory(
                 speed_kmh=round(v_mps * 3.6, 4),
                 calibration_id=calibration_id,
                 status=STATUS_VALID,
-                smoothing_window=window_s,
+                smoothing_window=window_out,
                 ground_point_method=ground_point_method,
                 world_x=curr_wx,
                 world_y=curr_wy,

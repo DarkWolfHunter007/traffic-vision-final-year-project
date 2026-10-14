@@ -422,3 +422,165 @@ def test_tp8_13_service_end_to_end_and_cli_commands(speed_test_env: dict[str, An
 
     assert out_show_track["track_id"] == 1
     assert out_show_track["count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Phase 08 defect-fix tests (synthetic software fixtures)
+# ---------------------------------------------------------------------------
+
+
+def _insert_plain_run(conn: sqlite3.Connection, env: dict[str, Any], video_id: str, notes: str) -> str:
+    run_id = str(uuid4())
+    insert_run(
+        conn,
+        {
+            "run_id": run_id,
+            "parent_run_id": None,
+            "video_id": video_id,
+            "model_version": None,
+            "config_hash": config_hash(env["config"]),
+            "config_json": canonical_json(env["config"]),
+            "schema_version": schema_version(),
+            "code_version": current_code_version(env["tmp_path"]),
+            "source_video_sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+            "started_at": _utc_now(),
+            "status": "completed",
+            "notes": notes,
+        },
+    )
+    return run_id
+
+
+def test_service_end_to_end_values(speed_test_env: dict[str, Any]) -> None:
+    env = speed_test_env
+    summary = run_speed_estimation(
+        parent_run_id=env["tracking_run_id"],
+        calibration_id=env["accepted_calib_id"],
+        config=env["config"],
+        repository_root=env["tmp_path"],
+    )
+    assert summary["max_speed_mps"] == pytest.approx(10.0, abs=1e-3)
+    assert summary["max_speed_kmh"] == pytest.approx(36.0, abs=1e-2)
+    with database_connection(env["db_path"]) as conn:
+        rows = fetch_speed_observations_for_run(conn, summary["run_id"], track_id=1)
+        for row in rows[1:]:
+            assert row["status"] == "valid"
+            assert row["speed_mps"] == pytest.approx(10.0, abs=1e-3)
+            assert row["speed_kmh"] == pytest.approx(36.0, abs=1e-2)
+            assert row["smoothing_window"] == 0.5
+
+
+def test_smoothing_window_null_when_method_none(speed_test_env: dict[str, Any]) -> None:
+    env = speed_test_env
+    cfg = dict(env["config"])
+    cfg["speed"] = {**cfg["speed"], "smoothing_method": "none"}
+    summary = run_speed_estimation(
+        parent_run_id=env["tracking_run_id"],
+        calibration_id=env["accepted_calib_id"],
+        config=cfg,
+        repository_root=env["tmp_path"],
+    )
+    with database_connection(env["db_path"]) as conn:
+        rows = fetch_speed_observations_for_run(conn, summary["run_id"])
+        assert rows and all(r["smoothing_window"] is None for r in rows)
+
+
+def test_calibration_from_other_video_rejected(speed_test_env: dict[str, Any]) -> None:
+    env = speed_test_env
+    other_video = "vid_other_fixture"
+    with database_connection(env["db_path"]) as conn:
+        insert_video(
+            conn,
+            {
+                "video_id": other_video, "filename": "o.mp4", "path": str(env["tmp_path"] / "o.mp4"),
+                "sha256": "0" * 64, "fps_nominal": 30.0, "width": 1920, "height": 1080,
+                "duration_s": 1.0, "frame_count": 30, "variable_frame_rate": 0,
+                "wall_clock_start": None, "ingested_at": _utc_now(), "metadata_json": None,
+            },
+        )
+        other_run = _insert_plain_run(conn, env, other_video, "Synthetic software fixture calibration run")
+        other_calib = str(uuid4())
+        insert_calibration_run(
+            conn,
+            {
+                "calibration_id": other_calib, "run_id": other_run, "video_id": other_video,
+                "method": "planar_homography", "point_count": 6, "held_out_point_count": 2,
+                "reprojection_error_m_mean": 0.01, "reprojection_error_m_max": 0.02,
+                "distortion_checked": 0, "flat_road_assumption": 1, "accepted": 1,
+                "parameters_json": json.dumps({"homography_matrix": _SOFTWARE_H_TRUE.tolist()}),
+            },
+        )
+    with pytest.raises(ValueError, match="belongs to video"):
+        run_speed_estimation(
+            parent_run_id=env["tracking_run_id"], calibration_id=other_calib,
+            config=env["config"], repository_root=env["tmp_path"],
+        )
+
+
+def test_auto_resolve_without_accepted_calibration_errors(speed_test_env: dict[str, Any]) -> None:
+    env = speed_test_env
+    with database_connection(env["db_path"]) as conn:
+        conn.execute("UPDATE calibration_runs SET accepted = 0")
+    with pytest.raises(ValueError, match="No accepted calibration"):
+        run_speed_estimation(
+            parent_run_id=env["tracking_run_id"], calibration_id=None,
+            config=env["config"], repository_root=env["tmp_path"],
+        )
+
+
+def test_non_tracking_parent_rejected(speed_test_env: dict[str, Any]) -> None:
+    env = speed_test_env
+    with database_connection(env["db_path"]) as conn:
+        non_tracking = _insert_plain_run(conn, env, env["video_id"], "Synthetic software fixture calibration run")
+    with pytest.raises(ValueError, match="not a tracking run"):
+        run_speed_estimation(
+            parent_run_id=non_tracking, calibration_id=env["accepted_calib_id"],
+            config=env["config"], repository_root=env["tmp_path"],
+        )
+
+
+def _failing_insert(conn: sqlite3.Connection, rows: Any) -> None:
+    from backend.database.repository import insert_speed_observations as real_insert
+
+    rows = list(rows)
+    real_insert(conn, rows[:3])
+    raise RuntimeError("software fixture insert failure")
+
+
+def test_failed_insert_leaves_no_rows_and_run_failed(
+    speed_test_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = speed_test_env
+    monkeypatch.setattr("backend.services.speed.insert_speed_observations", _failing_insert)
+    with pytest.raises(RuntimeError, match="insert failure"):
+        run_speed_estimation(
+            parent_run_id=env["tracking_run_id"], calibration_id=env["accepted_calib_id"],
+            config=env["config"], repository_root=env["tmp_path"],
+        )
+    with database_connection(env["db_path"]) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM speed_observations").fetchone()[0] == 0
+        failed = conn.execute(
+            "SELECT status FROM processing_runs WHERE parent_run_id = ?", (env["tracking_run_id"],)
+        ).fetchall()
+        assert [r["status"] for r in failed] == ["failed"]
+
+
+def test_failed_insert_preserves_caller_pending_work(
+    speed_test_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = speed_test_env
+    monkeypatch.setattr("backend.services.speed.insert_speed_observations", _failing_insert)
+    conn = sqlite3.connect(env["db_path"])
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        conn.execute("UPDATE videos SET filename = 'pending_caller_change.mp4'")
+        with pytest.raises(RuntimeError, match="insert failure"):
+            run_speed_estimation(
+                parent_run_id=env["tracking_run_id"], calibration_id=env["accepted_calib_id"],
+                config=env["config"], repository_root=env["tmp_path"], connection=conn,
+            )
+        assert conn.execute("SELECT COUNT(*) FROM speed_observations").fetchone()[0] == 0
+        assert conn.execute("SELECT filename FROM videos").fetchone()[0] == "pending_caller_change.mp4"
+    finally:
+        conn.close()
