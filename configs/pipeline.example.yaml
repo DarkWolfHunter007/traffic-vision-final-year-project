@@ -1,0 +1,95 @@
+# Copy to configs/pipeline.yaml and edit (the app's Pipeline page saves it for you).
+#   uv run pattom blocks                     list every block
+#   uv run pattom pipeline check             check this file (nothing runs)
+#   uv run --no-sync pattom pipeline run     run it (--no-sync keeps the GPU PyTorch)
+#   ... run --only count,signal-phases       rerun some blocks; other inputs come from the last run
+#
+# Each block reads named artifacts and writes new ones. Switch a block off with
+# "enabled: false"; feed a block from another artifact with "bind". The study's
+# decisions (definitions, weights, site measurements) are in
+# configs/study_settings.yaml, one section per block; empty ones are named by the check.
+
+slot: test
+
+inputs:
+  video.raw: data/raw/IMG_1480.MOV          # originals are never written to
+  # video.checkerboard: data/raw/checkerboard.MOV
+  # phase_log: runs/test/phase_log.csv      # Signal phases page
+  # manual_counts: runs/test/IMG_1480/manual_counts.csv   # Manual counts page
+
+blocks:
+  # B Preparation
+  - use: cfr
+    params: {fps: 30}
+  - use: calibrate-lens                     # needs the checkerboard clip
+    enabled: false
+    params: {cols: 9, rows: 6, square_mm: 25}
+  - use: undistort
+    enabled: false
+
+  # C Detection, D Tracking
+  - use: detect
+    bind: {video: video.cfr}                # switch to video.undistorted once undistort is on
+    params: {config: configs/detection.yaml}
+  - use: track
+    params: {config: configs/tracker.yaml}
+
+  # E Review (then correct the frames on the Review page)
+  - use: review
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+
+  # F Calculation layer
+  - use: ground-map                         # needs calibration/ground.yaml
+    enabled: false
+  - use: drift
+    enabled: false
+    bind: {video: video.cfr}
+  - use: count                              # needs configs/lines.yaml
+    enabled: false
+    params: {interval_s: 900}
+  - use: signal-phases                      # needs the phase_log input
+    enabled: false
+  - use: count-validation                   # needs the manual_counts input
+    enabled: false
+  - use: stopped-delay
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+  - use: queue
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+  - use: capacity-vc
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+
+  # G Index and emissions, H Analysis
+  - use: congestion-index
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+  - use: emissions
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+  - use: analysis
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+
+  # I-K Alternatives (Alternatives page), pre-SUMO scoring, MCE
+  - use: alternatives
+    enabled: false
+  - use: pre-sumo-scoring
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+  - use: mce
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+
+  # L SUMO (existing case and the MCE winner only), M Comparison
+  - use: sumo-inputs
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+  - use: sumo-run
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}
+  - use: comparison
+    enabled: false
+    params: {settings_file: configs/study_settings.yaml}

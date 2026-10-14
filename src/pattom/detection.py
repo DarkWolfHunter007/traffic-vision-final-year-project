@@ -7,7 +7,10 @@ frame; counting, delay and everything else happen later from tracks.
 - Model labels are mapped to project classes by an explicit table. A label
   that is neither mapped nor listed as ignored stops the run.
 - Optional tiles (e.g. the far arm) are detected at full resolution and merged
-  with the full-frame pass before tracking (ARCHITECTURE section 12).
+  with the full-frame pass before tracking (ARCHITECTURE section 12). Tiles are
+  listed one by one (``tiles``) or generated as a grid (``tile_grid``).
+- Ultralytics runs offline: no update checks, no usage analytics, settings
+  inside the repository. Nothing needs an internet connection.
 - Input must be a constant-frame-rate copy, so time_s = frame / fps.
 """
 
@@ -44,6 +47,10 @@ class DetectionConfig:
     device: str | None = None
     tiles: list[list[int]] = field(default_factory=list)
     tile_imgsz: int = 1280
+    # {size: px, overlap: px, region: [x1, y1, x2, y2] (optional, default whole frame)}
+    tile_grid: dict[str, Any] | None = None
+    # Drop a lower-scored box lying mostly inside a kept one (tile-edge halves); None = off.
+    merge_inside: float | None = None
 
     @classmethod
     def load(cls, path: Path) -> "DetectionConfig":
@@ -58,7 +65,21 @@ class DetectionConfig:
         for t in cfg.tiles:
             if len(t) != 4 or not (t[0] < t[2] and t[1] < t[3]):
                 raise ValueError(f"tile must be [x1, y1, x2, y2] with x1<x2, y1<y2: {t}")
+        if cfg.tile_grid is not None:
+            g = cfg.tile_grid
+            if not isinstance(g, dict) or "size" not in g or not 0 <= g.get("overlap", 0) < g["size"]:
+                raise ValueError("tile_grid needs size and 0 <= overlap < size, e.g. {size: 1280, overlap: 256}")
+        if cfg.merge_inside is not None and not 0 < cfg.merge_inside <= 1:
+            raise ValueError("merge_inside must be between 0 and 1, or null")
         return cfg
+
+    def tiles_for(self, width: int, height: int) -> list[list[int]]:
+        """The explicit tiles plus the grid, clipped to the frame."""
+        tiles = [list(map(int, t)) for t in self.tiles]
+        if self.tile_grid:
+            g = self.tile_grid
+            tiles += grid_tiles(width, height, int(g["size"]), int(g.get("overlap", 0)), g.get("region"))
+        return tiles
 
     def weights_path(self) -> Path:
         p = Path(self.weights)
@@ -68,6 +89,41 @@ class DetectionConfig:
         if not p.exists():
             raise FileNotFoundError(f"{p} not found. Put the weights file in models/; nothing is downloaded.")
         return p
+
+
+def _starts(lo: int, hi: int, size: int, overlap: int) -> list[int]:
+    if hi - lo <= size:
+        return [lo]
+    out, s = [], lo
+    while s + size < hi:
+        out.append(s)
+        s += size - overlap
+    out.append(hi - size)
+    return out
+
+
+def grid_tiles(width: int, height: int, size: int, overlap: int, region: list[int] | None = None) -> list[list[int]]:
+    """Square tiles covering the region (default the whole frame), neighbours
+    overlapping by ``overlap`` pixels; the last row and column end at the edge."""
+    x1, y1, x2, y2 = region or [0, 0, width, height]
+    x1, y1, x2, y2 = max(0, x1), max(0, y1), min(width, x2), min(height, y2)
+    return [[x, y, min(x + size, x2), min(y + size, y2)]
+            for y in _starts(y1, y2, size, overlap) for x in _starts(x1, x2, size, overlap)]
+
+
+def _offline_ultralytics() -> None:
+    """Keep Ultralytics off the internet and its settings inside the repository."""
+    cfg_dir = REPO_ROOT / ".ultralytics"
+    (cfg_dir / "Ultralytics").mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("YOLO_CONFIG_DIR", str(cfg_dir))
+    os.environ["YOLO_OFFLINE"] = "1"
+    from ultralytics.utils import SETTINGS
+
+    wanted = {"sync": False, "datasets_dir": str(REPO_ROOT / "labels"), "weights_dir": str(MODELS),
+              "runs_dir": str(RUNS / "_ultralytics"), "clearml": False, "comet": False, "dvc": False,
+              "mlflow": False, "raytune": False, "tensorboard": False, "wandb": False}
+    if any(SETTINGS.get(k) != v for k, v in wanted.items()):
+        SETTINGS.update(wanted)
 
 
 class Detector(Protocol):
@@ -82,7 +138,7 @@ class UltralyticsDetector:
     """Wraps an Ultralytics YOLO model. Settings stay inside the repository."""
 
     def __init__(self, cfg: DetectionConfig):
-        os.environ.setdefault("YOLO_CONFIG_DIR", str(REPO_ROOT / ".ultralytics"))
+        _offline_ultralytics()
         from ultralytics import YOLO  # heavy import, only when detection runs
 
         path = cfg.weights_path()
@@ -109,7 +165,8 @@ def detect_frame(image: np.ndarray, cfg: DetectionConfig, detector: Detector) ->
     boxes, scores, labels, passes = [], [], [], []
     for xyxy, conf, label in detector.predict(image, cfg.imgsz):
         boxes.append(np.asarray(xyxy, float)); scores.append(conf); labels.append(label); passes.append("full")
-    for i, (x1, y1, x2, y2) in enumerate(cfg.tiles):
+    tiles = cfg.tiles_for(image.shape[1], image.shape[0])
+    for i, (x1, y1, x2, y2) in enumerate(tiles):
         crop = image[y1:y2, x1:x2]
         for xyxy, conf, label in detector.predict(crop, cfg.tile_imgsz):
             boxes.append(np.asarray(xyxy, float) + [x1, y1, x1, y1])
@@ -117,7 +174,7 @@ def detect_frame(image: np.ndarray, cfg: DetectionConfig, detector: Detector) ->
     if not boxes:
         return []
     arr = np.vstack(boxes)
-    keep = nms(arr, np.array(scores), cfg.merge_iou) if cfg.tiles else range(len(boxes))
+    keep = nms(arr, np.array(scores), cfg.merge_iou, cfg.merge_inside) if tiles else range(len(boxes))
     return [
         {"xyxy": arr[i], "confidence": scores[i], "raw_label": labels[i], "pass": passes[i]}
         for i in keep
@@ -142,8 +199,11 @@ def map_labels(dets: list[dict[str, Any]], cfg: DetectionConfig, ignored: Counte
 
 
 def run_detection(video: Path, slot: str, cfg: DetectionConfig, detector: Detector | None = None,
-                  out_dir: Path | None = None) -> Path:
-    """Detect on a prepared (CFR) video. Writes detections.csv and run metadata."""
+                  out_dir: Path | None = None, progress=None) -> Path:
+    """Detect on a prepared (CFR) video. Writes detections.csv and run metadata.
+
+    progress, if given, is called with a short text line every 100 processed frames.
+    """
     from pattom.prepare import probe
 
     info = probe(video)
@@ -157,6 +217,7 @@ def run_detection(video: Path, slot: str, cfg: DetectionConfig, detector: Detect
     out = out_dir / "detections.csv"
     ignored: Counter = Counter()
     cap = cv2.VideoCapture(str(video))
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or None
     frame = n_processed = n_dets = 0
     try:
         with open(out, "w", newline="", encoding="utf-8") as f:
@@ -173,6 +234,9 @@ def run_detection(video: Path, slot: str, cfg: DetectionConfig, detector: Detect
                                     round(d["confidence"], 4), x1, y1, x2, y2, d["pass"]])
                         n_dets += 1
                     n_processed += 1
+                    if progress and n_processed % 100 == 0:
+                        of = f"/{total}" if total else ""
+                        progress(f"detect: frame {frame}{of}, {n_dets} boxes")
                 frame += 1
     finally:
         cap.release()
@@ -187,8 +251,9 @@ def run_detection(video: Path, slot: str, cfg: DetectionConfig, detector: Detect
         model_name=detector.name,
         model_version=detector.version,
         confidence_threshold=cfg.confidence_threshold,
-        tiling_settings={"tiles": cfg.tiles, "tile_imgsz": cfg.tile_imgsz, "merge_iou": cfg.merge_iou}
-        if cfg.tiles else None,
+        tiling_settings={"tiles": cfg.tiles_for(info.width, info.height), "tile_grid": cfg.tile_grid,
+                         "tile_imgsz": cfg.tile_imgsz, "merge_iou": cfg.merge_iou, "merge_inside": cfg.merge_inside}
+        if cfg.tiles or cfg.tile_grid else None,
         parameters={"process_fps": cfg.process_fps, "frame_stride": stride, "imgsz": cfg.imgsz,
                     "half": cfg.half, "class_map": cfg.class_map, "frames_read": frame,
                     "frames_processed": n_processed, "detections": n_dets,

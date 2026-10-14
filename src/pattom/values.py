@@ -1,4 +1,4 @@
-"""Labelled values (AI_RULES section 4, rule 2).
+"""Labelled values.
 
 Every number the pipeline produces is measured, derived or estimated, and
 carries where it came from.

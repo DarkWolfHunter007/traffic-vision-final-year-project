@@ -1,0 +1,75 @@
+# Copy to configs/study_settings.yaml (the app's "Settings files" page does this when you save).
+# One section per block. Every empty value is an open project decision or a site
+# measurement: fill it only from an approved written definition, the footage, the
+# site, or the source register. The pipeline check names each one still empty.
+# The blocks read their section through  params: {settings_file: configs/study_settings.yaml}
+
+review:                       # E. Tool settings, tuned on the test clip (T11)
+  low_confidence:             # flag a track whose weakest box is below this
+  edge_margin_px:             # a track ending farther than this from the edge "vanished"
+  random_frames:              # random frames added, because confidence is not accuracy
+  seed:
+  min_gap_s:                  # keep flagged frames this far apart
+  hard_zones: []              # [{name: far_arm, polygon_px: [[u, v], ...]}]
+
+stopped-delay:                # F. Definition O6 (T46)
+  stopped_speed_kmh:
+  speed_window_s:
+  definition_version:         # name of the approved written definition
+  interval_s: 900
+
+queue:                        # F. Definition O6 (T46)
+  stopped_speed_kmh:
+  speed_window_s:
+  definition_version:
+  measure_at:                 # green_start or max_during_red
+  approach_heads: {}          # {north: N_main, south: S_main, east: E_main, west: W_main}
+
+capacity-vc:                  # F. IRC SP 41 section 7.6 (D11); PCU table O3
+  pcu_table:                  # table_3_1 or table_III_1
+  class_rows: {}              # {car: passenger_car, two_wheeler: motorcycle_scooter, auto_rickshaw: auto_rickshaw, bus: truck_bus, truck: truck_bus}
+  approaches: {}              # {north: {width_m: , gradient_pct: , signal_head: N_main, volume_line: N_arrival}} (site measurements)
+  effective_green:            # green or green_plus_amber_minus_lost
+
+congestion-index:             # G. Formula O4, needs the guide's approval (T47)
+  formula_version:
+  indicators: []              # [{source: capacity_vc, weight: , direction: higher_is_worse, normalise: {method: minmax}}, ...]
+  bands: []                   # optional interpretation scale [{max: , label: }]
+
+emissions:                    # G. Phase 1 CO2 while stopped (D13); fuel per class is an assumption
+  class_fuel: {}              # {car: {idle_row: car_petrol, fuel: petrol}, two_wheeler: {idle_row: motorcycle_petrol, fuel: petrol}, ...}
+
+analysis:                     # H. Your rules for what counts as a problem
+  rules: []                   # [{indicator: vc_ratio, op: '>', value: , problem: "east approach over capacity"}]
+
+pre-sumo-scoring:             # J. Method O13 (T28)
+  approach_groups: {}         # {north: NS, south: NS, east: EW, west: EW}
+  effective_green:            # as in capacity-vc
+  congestion_measure:         # max_vc or flow_weighted_vc
+  volume_stat:                # mean or max
+  delay_method: none          # no delay formula is registered yet (T28)
+
+mce:                          # K. Weights, scale and sensitivity O13 (T29)
+  weights: {}                 # {congestion: , emission: , safety: , cost: , land: } adding up to 1
+  directions: {}              # {congestion: higher_is_better, emission: higher_is_better, safety: higher_is_better, cost: lower_is_better, land: lower_is_better}
+  manual_scores: {}           # {safety: {A1: , A2: }, cost: {...}, land: {...}}
+  scale:                      # e.g. "1-5, 5 best"
+  equal_criterion:            # score_zero, score_one or drop_and_reweight (land is equal for timing changes, D3)
+  sensitivity_step:
+  missing_criteria: error     # or drop_and_reweight while a criterion has no scores yet
+
+sumo-inputs:                  # L. Network in configs/sumo_network.yaml
+  approach_groups: {}
+  phase_order: []             # e.g. [NS, EW]
+  all_red_s:                  # measured
+  demand_line_type:           # arrival or stop_line
+  unknown_movement:           # exclude or proportional
+
+sumo-run:                     # L. Seeds chosen before the runs, the same for both cases; tolerance O14
+  seeds: []
+  warmup_s:
+
+comparison:                   # M. SUMO emissions O18
+  emission_method:            # none or registered_idle_factors
+  class_fuel: {}              # for registered_idle_factors
+  calibration_tolerance:      # O14, agreed with the guide

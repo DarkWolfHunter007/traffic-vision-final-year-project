@@ -19,4 +19,13 @@ runs/*
 configs/detection.yaml
 configs/tracker.yaml
 configs/lines.yaml
+configs/pipeline.yaml
 calibration/ground.yaml
+Ultralytics/
+outputs/viewer_check/
+configs/study_settings.yaml
+configs/sumo_network.yaml
+configs/alternatives.yaml
+# Label images show people and plates (privacy, O16); runs of SUMO are outputs.
+labels/**/images/
+sumo/*/

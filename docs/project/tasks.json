@@ -18,16 +18,21 @@
         "Y": "Tasks added, removed or re-ordered.",
         "Z": "Status updates, evidence, wording."
       },
-      "current_version": "v0.5.0"
+      "current_version": "v0.6.4"
     },
     "history": {
       "v0.1.0": "2026-10-14: Ledger created from HANDOFF.md, the 14 Oct addendum, the consistency-fix list and the planning conversation.",
       "v0.2.0": "2026-10-14: Decisions D8-D13 added. Open decisions restructured with status; O1, O2, O8 decided, O3, O4, O6 partly decided, O13 added. T45 (local review screen) added before T15 and T15 now depends on it. T21 no longer waits on O6 (delay settled). T24 no longer depends on O5 (it proposes the answer) and T25 now does. T24, T41, T42, T44 set IN_PROGRESS. T28 now depends on O13. T38 scope widened. Documents block added.",
       "v0.3.0": "2026-10-14: Applied the Opus 5.5 review. Key 'files' renamed 'tasks'. Added T46 (operational definitions before recording), T47 (propose the congestion-index formula), T48 (pixel-to-ground mapping and drift check). Split the circular definition tasks: T46 and T47 propose, T20/T21/T23 compute. T28 and T29 no longer wait on O13; T30 does. T05 no longer waits on O11 (now waits on O15). T16 waits on T15, T05, T06. T17 waits on T18 (not T19). T19 waits on the slot recordings. T25, T20, T22 gained dependencies. D2 reworded as a dated user override; D4 guide_confirmed set to false; D10 narrowed. Open decisions O14-O16 added; O6 and O13 widened. Statuses reset to the BLOCKED/PENDING rule. Ongoing flag added to T44. Per-task history added. Fixes-file id map added.",
       "v0.4.0": "2026-10-14: IRC SP 41 (1994, supplied by the guide) recorded: D11 updated, D14 added, O3 narrowed to the PCU-table choice, notes added to T12, T22, T27, T28, T38. Emission research recorded: interim CO2-first method proposed (not a decision), T24 and T25 notes and evidence updated, O12 note added, T07 note added. T49 added (user obtains the priority papers and the ARAI Annexure IV). New documents: IRC_SP41_extract.md and EMISSION_SOURCES.md. PRD moved to v0.3.",
-      "v0.5.0": "2026-10-14: Source register added (D15): input values come only from the footage or the registered sources (IRC SP 41, the emission sources). D13 updated: CO2-first working plan adopted by the user (guide pending); O5 closed; O17 (phase 2 pollutants) and O18 (how SUMO emissions are computed) added. T50 added (check 'reported' values against the papers); T40 waits on it. Gap recorded on T28 (no delay formula in SP 41). T36 waits on O18. Documents moved to PRD v0.4, ARCHITECTURE v0.3, PLAN v0.3, AI_RULES v0.3."
+      "v0.5.0": "2026-10-14: Source register added (D15): input values come only from the footage or the registered sources (IRC SP 41, the emission sources). D13 updated: CO2-first working plan adopted by the user (guide pending); O5 closed; O17 (phase 2 pollutants) and O18 (how SUMO emissions are computed) added. T50 added (check 'reported' values against the papers); T40 waits on it. Gap recorded on T28 (no delay formula in SP 41). T36 waits on O18. Documents moved to PRD v0.4, ARCHITECTURE v0.3, PLAN v0.3, AI_RULES v0.3.",
+      "v0.6.0": "2026-10-14: T51 (pipeline harness: every component A-M as a plug-in block) and T52 (read-only local web viewer) added as DONE, built on the user's request in this session. Notes added to T19 (phase-log checking tool) and T45 (viewer as its base); their statuses are unchanged.",
+      "v0.6.1": "2026-10-14: T52 extended from the read-only viewer to the local web app (workbench) with pipeline runner and editors for counting lines, ground points, the phase log and settings; wording and evidence updated.",
+      "v0.6.2": "2026-10-14: user instruction: the app runs without AI help and does not include the AI rules; T52 updated (Home page from the app's own files replaces the ledger page).",
+      "v0.6.3": "2026-10-14: T11 note: far vehicles in 4K are missed at imgsz 1280; tiling preview and offline Ultralytics added to the app. O7 not decided.",
+      "v0.6.4": "2026-10-14: every pipeline block built (E review to M comparison) with open decisions as required settings and register gaps reported; app pages for review, manual counts, alternatives and settings files. Task statuses unchanged except T51/T52 evidence."
     },
-    "review_order": ["T44", "T38", "T41", "T42", "T43", "T24", "T49", "T50", "T01", "T02", "T46", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T48", "T11", "T12", "T13", "T14", "T45", "T15", "T16", "T18", "T17", "T19", "T20", "T21", "T22", "T47", "T23", "T25", "T26", "T27", "T28", "T29", "T30", "T31", "T32", "T33", "T36", "T34", "T35", "T37", "T39", "T40"],
+    "review_order": ["T44", "T38", "T41", "T42", "T43", "T24", "T49", "T50", "T01", "T02", "T46", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T48", "T11", "T12", "T13", "T14", "T51", "T52", "T45", "T15", "T16", "T18", "T17", "T19", "T20", "T21", "T22", "T47", "T23", "T25", "T26", "T27", "T28", "T29", "T30", "T31", "T32", "T33", "T36", "T34", "T35", "T37", "T39", "T40"],
     "documents": {
       "AI_RULES.md": "Rules for any AI agent on this project (v0.3)",
       "PRD.md": "What the project must do and why (v0.4); section 8.1 is the source register",
@@ -339,8 +344,8 @@
       "done_when": "Findings recorded, free-left presence noted, and O7, O9 and O10 put to the user for decision",
       "status": "PENDING",
       "evidence": "",
-      "notes": "Pretrained COCO models have no auto-rickshaw class. Expect autos to be mislabelled.",
-      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+      "notes": "Pretrained COCO models have no auto-rickshaw class. Expect autos to be mislabelled. Finding on IMG_1480 (4K, yolo11m, 14 Oct 2026, not yet checked by eye): with imgsz 1280 no detection with confidence >= 0.5 lies in the top 350 px (far approach). On one frame, confident boxes went from 30 (whole frame only) to 57-63 with 4 tiles on the top half and 63 with an 8-tile grid; in the far third from 13 to 33-36. Measured time per frame (6 frames, FP32): 0.09 s whole frame, 0.28 s with 2 far-half tiles, 1.27 s with 8 tiles. More boxes are not yet shown to be correct (possible doubles at tile edges). Tiling stays open (O7); the app's Settings page previews it on any frame.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review", "v0.6.3 2026-10-14: note added: 4K tiling finding and the preview tool; status unchanged"]
     },
     "T12": {
       "title": "Define the class list and labelling rules",
@@ -427,8 +432,8 @@
       "done_when": "Number of phases and cycle length are established from footage",
       "status": "PENDING",
       "evidence": "",
-      "notes": "User estimate, not verified: N-S green about 50 s, E-W green about 20-30 s. A first provisional read from the test clip is allowed, but the final table covers about 10 minutes of each slot because plans may differ by time of day. Cross-check with the vehicle-start method, ignoring free-left vehicles.",
-      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+      "notes": "User estimate, not verified: N-S green about 50 s, E-W green about 20-30 s. A first provisional read from the test clip is allowed, but the final table covers about 10 minutes of each slot because plans may differ by time of day. Cross-check with the vehicle-start method, ignoring free-left vehicles. Tool ready (T51): type the read-out as a CSV (slot, time_s, signal_head, state, phase_group) and run pattom phases or the signal-phases block; it checks the log and gives green, amber, red and cycle length per complete cycle. The vehicle-start cross-check is not in the tool.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review", "v0.6.0 2026-10-14: note added: phase-log checking tool built (T51); status unchanged"]
     },
     "T20": {
       "title": "Compute queue length",
@@ -714,8 +719,8 @@
       "done_when": "The app runs on the user's PC, shows a flagged event with a short clip and the full frame, saves a corrected label, and the user confirms it works",
       "status": "PENDING",
       "evidence": "",
-      "notes": "Design is in ARCHITECTURE.md section 5. Detection stays a separate batch job. Do not write code until the user says to start building (AI_RULES.md section 6). If the user drops the custom screen, replace it with an export to a labelling tool (CVAT or Label Studio) and update T15. An untested draft script, detect_track_review.py, exists in the uploads from before the no-code instruction; it has not been run and is not part of the plan.",
-      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+      "notes": "Design is in ARCHITECTURE.md section 5. Detection stays a separate batch job. Do not write code until the user says to start building (AI_RULES.md section 6). If the user drops the custom screen, replace it with an export to a labelling tool (CVAT or Label Studio) and update T15. An untested draft script, detect_track_review.py, exists in the uploads from before the no-code instruction; it has not been run and is not part of the plan. The read-only viewer (T52) and the planned review block (T51) are the base to build on; the review screen itself has not been started.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review", "v0.6.0 2026-10-14: note added: viewer (T52) and review block placeholder (T51) exist; status unchanged"]
     },
     "T46": {
       "title": "Write the operational definitions before the full recordings",
@@ -771,6 +776,28 @@
       "evidence": "",
       "notes": "Owner: the AI, once the user supplies the papers (T49). Do not mark a value verified from an abstract or from memory.",
       "history": ["v0.5.0 2026-10-14: task added"]
+    },
+    "T51": {
+      "title": "Build the pipeline harness: every architecture component as a plug-in block",
+      "phase": "Tooling (P2-P7)",
+      "depends_on": [],
+      "output": "pattom.harness (block contract, registry, pipeline runner with check and manifest) and pattom.blocks (one block per component A-M); configs/pipeline.example.yaml; commands pattom blocks and pattom pipeline check/run",
+      "done_when": "Each component A-M is a block that can be switched off, rebound or replaced; the pipeline is checked before it runs; planned blocks refuse to run and name what they wait on; tests pass",
+      "status": "DONE",
+      "evidence": "Code in src/pattom/harness/ and src/pattom/blocks/, built 14 Oct 2026 on the user's request. All 23 blocks are built (B cfr, calibrate-lens, undistort; C detect; D track; E review; F ground-map, drift, count, signal-phases, count-validation, stopped-delay, queue, capacity-vc; G congestion-index, emissions; H analysis; I alternatives; J pre-sumo-scoring; K mce; L sumo-inputs, sumo-run; M comparison). tests/test_full_pipeline.py runs the whole chain from tracks to the SUMO comparison through the harness on a synthetic scene with the installed SUMO 1.27.1; tests/test_calculations.py and tests/test_sumo.py check each stage on hand-computed synthetic values. Full suite 86 passed. Not yet run on footage.",
+      "notes": "User request, 14 Oct 2026: blocks that can be removed and plugged in. Planned blocks hold no method: each is replaced by a built block of the same name only after its tasks and open decisions are done (queue and stopped delay wait on O6, capacity-vc on O3, congestion index on O4, MCE on O13, SUMO on O9, O14, O18). Also added pattom.phases and the signal-phases block, the checking tool for T19. Update 14 Oct 2026 (user: build the entire app rather than planned): the planned blocks were replaced by built ones. Every open decision is a required setting with no default (O3 PCU table, O4 index formula, O6 queue definition and stopped speed, O13 scoring and MCE, O14 seeds and tolerance, O18 SUMO emissions), collected in configs/study_settings.yaml; the pipeline check names each one still empty. Register gaps stay gaps: ARAI per-km factors (moving-vehicle emissions) and a delay formula for pre-SUMO scoring (T28). The MCE refuses to run with a criterion that has no scores unless missing_criteria: drop_and_reweight is chosen (a method decision under O13). No task other than T51/T52 changes status: each still needs footage, site measurements or decisions.",
+      "history": ["v0.6.0 2026-10-14: task added as DONE; the user asked for the build and confirmed it", "v0.6.4 2026-10-14: all planned blocks built with required decision settings; evidence and notes updated"]
+    },
+    "T52": {
+      "title": "Build the local web app (workbench): project status, videos, pipeline, results and input editors",
+      "phase": "P3 YOLO",
+      "depends_on": ["T51"],
+      "output": "pattom.viewer: a local web app (FastAPI and Uvicorn on 127.0.0.1, per-start token for every change) with pages Home (setup checklist and GPU check from the app's own files), Videos (probe, set input), Pipeline (switch, bind, set options, check, save, run with live log), Results (video with boxes, track list, CSV tables), Counting lines (T18), Ground points (T04, T48), Signal phases (T19), Settings and Source register; command pattom view; a synthetic demo run (pattom view --make-demo)",
+      "done_when": "The app runs on the user's PC; each page loads; the editors save only files the pipeline's own loaders accept; the results page draws boxes in step with the video; the browser test of every page passes",
+      "status": "DONE",
+      "evidence": "Code in src/pattom/viewer/, built 14 Oct 2026 on the user's request. tests/test_viewer.py: API and guard tests (token, local host only, validation before writing, phase cycles) and a Playwright test that drives the installed Microsoft Edge on the user's PC through all nine pages on a throwaway copy with the synthetic demo run: pipeline saved with a block switched on, results overlay frame 30 matching the test pattern's own counter, one counting line drawn and saved, a ground mapping fitted (4 fit and 1 check point, synthetic values) and saved, a phase log marked from the video giving one 4.0 s cycle. Screenshots of every page in outputs/viewer_check/ (synthetic, no footage). Full suite 68 passed. Not yet used on real footage; a pipeline run from the app has not been tried on the real repository.",
+      "notes": "Display and editing only: it computes no traffic values and does not edit labels. It is not the review screen: T45 (flags, label correction, exports) is still open. Serves 127.0.0.1 only because privacy handling is open (O16). Browser checks use the synthetic run so no frames with people or plates leave the PC. User instruction, 14 Oct 2026: the app must run on its own without AI help; it reads no AI-agent documents (AI_RULES.md, CLAUDE.md, this ledger) and YOLO is its only model. The test runs it on a copy without docs/ or CLAUDE.md.",
+      "history": ["v0.6.0 2026-10-14: task added as DONE; the user asked for the build and confirmed it", "v0.6.1 2026-10-14: extended from the read-only viewer to the full workbench on the user's request; title, output, done_when, evidence and notes updated", "v0.6.2 2026-10-14: Project page (read this ledger) replaced by a Home page built from the app's own files, on the user's instruction that the app runs without AI help", "v0.6.4 2026-10-14: pages added: Review and labels, Manual counts, Alternatives, Settings files; Detection settings with tile preview"]
     }
   }
 }

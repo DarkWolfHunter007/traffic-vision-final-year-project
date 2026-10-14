@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="pattom-token" content="__PATTOM_TOKEN__">
+<title>Pattom workbench</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div id="shell">
+  <nav id="nav">
+    <div class="brand">Pattom<span>workbench</span></div>
+    <a href="#/home" data-page="home"><i>◎</i>Home</a>
+    <div class="navgroup">Data</div>
+    <a href="#/videos" data-page="videos"><i>▶</i>Videos</a>
+    <a href="#/pipeline" data-page="pipeline"><i>⇢</i>Pipeline</a>
+    <a href="#/results" data-page="results"><i>▦</i>Results</a>
+    <a href="#/review" data-page="review"><i>✎</i>Review and labels</a>
+    <div class="navgroup">Inputs you make</div>
+    <a href="#/lines" data-page="lines"><i>╱</i>Counting lines</a>
+    <a href="#/ground" data-page="ground"><i>⌖</i>Ground points</a>
+    <a href="#/phases" data-page="phases"><i>●</i>Signal phases</a>
+    <a href="#/manual" data-page="manual"><i>#</i>Manual counts</a>
+    <a href="#/alternatives" data-page="alternatives"><i>⇄</i>Alternatives</a>
+    <a href="#/settings" data-page="settings"><i>⚙</i>Detection settings</a>
+    <a href="#/files" data-page="files"><i>☰</i>Settings files</a>
+    <div class="navgroup">Reference</div>
+    <a href="#/sources" data-page="sources"><i>❐</i>Source register</a>
+    <div class="navfoot">Local only · 127.0.0.1<br><span id="jobchip" class="chip off">no run</span></div>
+  </nav>
+  <main id="view"></main>
+</div>
+<div id="toasts"></div>
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

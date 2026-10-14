@@ -104,3 +104,79 @@ def green_split(effective_green_total_s: float, flow_ratios: list[float]) -> lis
         Labelled(effective_green_total_s * y / y_total, "s", ValueType.DERIVED, ("irc_sp41_1994, p. 78",))
         for y in flow_ratios
     ]
+
+
+# --- Capacity and V/C per approach and interval (block capacity-vc) ---------
+
+CAPACITY_FIELDS = ["slot", "approach", "interval_start_s", "interval_end_s", "volume_line", "volume_pcu_h",
+                   "saturation_flow_pcu_h", "effective_green_s", "cycle_s", "n_cycles", "capacity_pcu_h",
+                   "capacity_unit", "vc_ratio", "pcu_set", "effective_green", "source", "source_status", "value_type"]
+EFFECTIVE_GREEN = ("green", "green_plus_amber_minus_lost")
+
+
+def run_capacity(interval_counts_csv, cycles_csv, slot: str, params: dict, out_dir, register: Register | None = None):
+    """V/C per approach and interval.
+
+    params (all required, no defaults):
+      pcu_table      SP 41 PCU table to use (open decision O3)
+      class_rows     project class -> SP 41 PCU row, e.g. {car: passenger_car}
+      approaches     {north: {width_m, gradient_pct, signal_head, volume_line}}; width and gradient
+                     are site measurements; volume_line is the counting line whose counts give demand
+      effective_green  "green" (observed green) or "green_plus_amber_minus_lost"
+                     (green + amber - SP 41 lost time per phase, p. 78)
+    Cycle and green are the means over the complete cycles observed for the head.
+    """
+    from collections import defaultdict
+    from statistics import mean
+
+    from pattom.tables import read_csv, require, write_csv, write_meta
+
+    require(params, "pcu_table", "class_rows", "approaches", "effective_green",
+            why="PCU table (O3), class mapping, measured approach geometry and the effective-green definition")
+    if params["effective_green"] not in EFFECTIVE_GREEN:
+        raise ValueError(f"effective_green must be one of {EFFECTIVE_GREEN}")
+    register = register or Register.load()
+    lost = register.get("sp41.lost_time_per_phase_s") if params["effective_green"] != "green" else None
+    cycles = read_csv(cycles_csv)
+    counts = read_csv(interval_counts_csv)
+    rows = []
+    for approach, spec in sorted(params["approaches"].items()):
+        for k in ("width_m", "gradient_pct", "signal_head", "volume_line"):
+            if k not in spec:
+                raise ValueError(f"approach {approach}: missing {k} (gradient_pct is measured; use 0 only if measured flat)")
+        own = [c for c in cycles if c["signal_head"] == spec["signal_head"]]
+        if not own:
+            raise ValueError(f"approach {approach}: no complete cycles for signal head {spec['signal_head']!r}")
+        c_s = mean(float(c["cycle_s"]) for c in own)
+        g_s = mean(float(c["green_s"]) for c in own)
+        if lost is not None:
+            g_s = g_s + mean(float(c["amber_s"]) for c in own) - float(lost.value)
+        sat = saturation_flow(float(spec["width_m"]), register, float(spec["gradient_pct"]))
+        cap = capacity(g_s, c_s, sat)
+        per_interval = defaultdict(lambda: defaultdict(int))
+        for r in counts:
+            if r["line_name"] == spec["volume_line"]:
+                per_interval[(float(r["interval_start_s"]), float(r["interval_end_s"]))][r["class"]] += int(r["count"])
+        for (start, end), by_class in sorted(per_interval.items()):
+            unmapped = sorted(set(by_class) - set(params["class_rows"]))
+            if unmapped:
+                raise ValueError(f"classes {unmapped} have no SP 41 PCU row in class_rows")
+            sp41_counts = defaultdict(int)
+            for cls, n in by_class.items():
+                sp41_counts[params["class_rows"][cls]] += n
+            vol = pcu_flow(sp41_counts, end - start, params["pcu_table"], register)
+            vc = vc_ratio(vol, cap)
+            rows.append({"slot": slot, "approach": approach, "interval_start_s": start, "interval_end_s": end,
+                         "volume_line": spec["volume_line"], "volume_pcu_h": round(vol.value, 1),
+                         "saturation_flow_pcu_h": round(sat.value, 1), "effective_green_s": round(g_s, 2),
+                         "cycle_s": round(c_s, 2), "n_cycles": len(own), "capacity_pcu_h": round(cap.value, 1),
+                         "capacity_unit": cap.unit, "vc_ratio": round(vc.value, 3), "pcu_set": params["pcu_table"],
+                         "effective_green": params["effective_green"], "source": "; ".join(vc.sources),
+                         "source_status": "verified" if not any("not checked" in s for s in vc.sources) else "reported",
+                         "value_type": ValueType.DERIVED.value})
+    from pathlib import Path
+
+    out = write_csv(Path(out_dir) / "capacity_vc.csv", CAPACITY_FIELDS, rows)
+    write_meta(Path(out_dir) / "capacity_vc.run.json", "F.capacity_vc", slot,
+               {"interval_counts": interval_counts_csv, "signal_cycles": cycles_csv}, params)
+    return out

@@ -20,9 +20,15 @@ dependencies = [
 detect = [
     "ultralytics>=8.4.177",  # uses predict(quantize=...)
 ]
+viewer = [
+    "fastapi>=0.143.1",
+    "uvicorn>=0.54.0",
+]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
+    "playwright>=1.64.0",
     "pytest>=8.0",
 ]
 

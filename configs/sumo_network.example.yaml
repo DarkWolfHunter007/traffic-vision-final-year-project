@@ -1,0 +1,17 @@
+# Copy to configs/sumo_network.yaml. The SUMO network is built on this PC from the
+# site layout and measurements; nothing is downloaded. Coordinates in metres in one
+# site system (e.g. the ground-mapping one), x east, y north.
+centre_xy:                    # junction centre, e.g. [0, 0]
+approaches: {}
+# approaches:
+#   north: {end_xy: [x, y], lanes_in: , lanes_out: , speed_kmh: }   # end of the modelled approach
+#   south: {...}
+#   east:  {...}
+#   west:  {...}
+
+# Vehicle types, one per project class. SUMO's own defaults are not a registered
+# source: give these from the footage or a registered source, then calibrate (T33).
+vtypes: {}
+# vtypes:
+#   car: {length_m: , min_gap_m: , max_speed_kmh: , accel: , decel: }
+#   extra attributes go in  extra: {sigma: , tau: }

@@ -1,4 +1,4 @@
-"""Command line for the preparation stage."""
+"""Command line: single stages, the block list and the pipeline harness."""
 
 from __future__ import annotations
 
@@ -82,6 +82,68 @@ def _count(args) -> None:
     print(run_counting(Path(args.tracks), Path(args.lines), args.interval_s, args.offset_s))
 
 
+def _phases(args) -> None:
+    from pattom.paths import RUNS
+    from pattom.phases import run_phases
+
+    out_dir = Path(args.out_dir) if args.out_dir else RUNS / args.slot / "signals"
+    for out in run_phases(Path(args.log), args.slot, out_dir):
+        print(out)
+
+
+def _blocks(args) -> None:
+    from pattom.harness import all_blocks
+
+    blocks = sorted(all_blocks().values(), key=lambda b: (b.component, b.name))
+    if args.json:
+        print(json.dumps([b.describe() for b in blocks], indent=2))
+        return
+    for b in blocks:
+        waits = ", ".join(b.tasks + b.waits_on)
+        print(f"{b.component}  {b.name:<18} {b.status:<8} {b.title}")
+        print(f"     in:  {', '.join(f'{p}={k}' for p, k in b.inputs.items()) or '-'}")
+        print(f"     out: {', '.join(b.outputs) or '-'}   [{waits}]")
+
+
+def _pipeline(args) -> None:
+    from pattom.harness import Pipeline, PipelineError
+
+    pipe = Pipeline.load(Path(args.config))
+    only = args.only.split(",") if args.only else None
+    if args.action == "check":
+        for s in pipe.steps:
+            state = "on " if s.enabled else "off"
+            print(f"[{state}] {s.id:<18} {s.block.status:<8} {', '.join(f'{p}<-{k}' for p, k in s.port_keys().items())}")
+        problems = pipe.check(only)
+        if problems:
+            print("\nProblems:")
+            for problem in problems:
+                print(f"  - {problem}")
+            raise SystemExit(1)
+        print("\nReady to run.")
+        return
+    try:
+        manifest = pipe.run(only, log=lambda msg: print(msg, flush=True))
+    except PipelineError as e:
+        raise SystemExit(str(e)) from None
+    for step in manifest["steps"]:
+        print(f"{step['id']:<18} {step['status']}  {', '.join(step.get('outputs', {}).values())}")
+    print(pipe.manifest_path())
+
+
+def _view(args) -> None:
+    import uvicorn
+
+    from pattom.viewer import create_app
+
+    if args.make_demo:
+        from pattom.viewer.demo import make_demo
+
+        print(f"synthetic demo run -> {make_demo()}")
+    print(f"Pattom viewer on http://127.0.0.1:{args.port}  (Ctrl+C to stop)")
+    uvicorn.run(create_app(), host="127.0.0.1", port=args.port, log_level="warning")
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="pattom")
     sub = p.add_subparsers(required=True)
@@ -142,6 +204,27 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--interval-s", type=float, default=900.0, help="interval length (default 15 min)")
     s.add_argument("--offset-s", type=float, default=0.0, help="start of this file within its slot")
     s.set_defaults(func=_count)
+
+    s = sub.add_parser("phases", help="check a signal phase log read from the footage -> cycles per signal head")
+    s.add_argument("log")
+    s.add_argument("--slot", required=True)
+    s.add_argument("--out-dir")
+    s.set_defaults(func=_phases)
+
+    s = sub.add_parser("blocks", help="list the pipeline blocks, their inputs, outputs and what they wait on")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=_blocks)
+
+    s = sub.add_parser("pipeline", help="check or run the blocks listed in a pipeline file")
+    s.add_argument("action", choices=["check", "run"])
+    s.add_argument("config", nargs="?", default=str(REPO_ROOT / "configs" / "pipeline.yaml"))
+    s.add_argument("--only", help="comma-separated block ids; other inputs come from the last manifest")
+    s.set_defaults(func=_pipeline)
+
+    s = sub.add_parser("view", help="local web viewer: video with boxes, tracks and block status (read-only)")
+    s.add_argument("--port", type=int, default=8000)
+    s.add_argument("--make-demo", action="store_true", help="first write a synthetic demo run (slot demo)")
+    s.set_defaults(func=_view)
 
     args = p.parse_args(argv)
     args.func(args)
