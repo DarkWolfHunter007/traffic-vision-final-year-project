@@ -1111,19 +1111,33 @@ def fetch_tracking_quality_stats(connection: sqlite3.Connection, run_id: str) ->
 
 
 def fetch_lineage_run_ids(connection: sqlite3.Connection, run_id: str) -> list[str]:
-    """Run ids related to ``run_id``: itself, parent, siblings and children (deterministic order)."""
-    related = [run_id]
+    """Run ids related to ``run_id``: itself, parent, siblings and children (deterministic order).
+
+    Only runs for the same video as ``run_id`` are returned (``--parent-run-id`` may point
+    across videos; such links are ignored).
+    """
     row = connection.execute(
-        "SELECT parent_run_id FROM processing_runs WHERE run_id = ?", (run_id,)
+        "SELECT parent_run_id, video_id FROM processing_runs WHERE run_id = ?", (run_id,)
     ).fetchone()
-    parent_id = row["parent_run_id"] if row else None
-    queries = []
+    related = [run_id]
+    if row is None:
+        return related
+    video_id = row["video_id"]
+    parent_id = row["parent_run_id"]
+    parents = []
     if parent_id:
-        related.append(parent_id)
-        queries.append(("SELECT run_id FROM processing_runs WHERE parent_run_id = ? ORDER BY run_id", parent_id))
-    queries.append(("SELECT run_id FROM processing_runs WHERE parent_run_id = ? ORDER BY run_id", run_id))
-    for sql, arg in queries:
-        for r in connection.execute(sql, (arg,)).fetchall():
+        prow = connection.execute(
+            "SELECT run_id FROM processing_runs WHERE run_id = ? AND video_id = ?",
+            (parent_id, video_id),
+        ).fetchone()
+        if prow:
+            related.append(parent_id)
+            parents.append(parent_id)
+    for anchor in parents + [run_id]:
+        for r in connection.execute(
+            "SELECT run_id FROM processing_runs WHERE parent_run_id = ? AND video_id = ? ORDER BY run_id",
+            (anchor, video_id),
+        ).fetchall():
             if r["run_id"] not in related:
                 related.append(r["run_id"])
     return related

@@ -21,12 +21,12 @@ VID = "vid_lin"
 CFG = {"counting": {"error_tolerance_pct": 10.0}}
 
 
-def _run(conn, run_id, parent=None):
+def _run(conn, run_id, parent=None, status="completed", video=VID, notes="n", config_json="{}"):
     insert_run(conn, {
-        "run_id": run_id, "parent_run_id": parent, "video_id": VID, "model_version": None,
-        "config_hash": "h", "config_json": "{}", "schema_version": schema_version(),
+        "run_id": run_id, "parent_run_id": parent, "video_id": video, "model_version": None,
+        "config_hash": "h", "config_json": config_json, "schema_version": schema_version(),
         "code_version": "c", "source_video_sha256": "s", "started_at": "2026-10-14T08:00:00Z",
-        "completed_at": "2026-10-14T08:01:00Z", "status": "completed", "notes": "n",
+        "completed_at": "2026-10-14T08:01:00Z", "status": status, "notes": notes,
     })
 
 
@@ -108,3 +108,94 @@ def test_export_speed_stats_aggregate_across_lineage(conn) -> None:
     assert data["speed_stats"]["total_observations"] == 2
     assert data["speed_stats"]["mean_speed_kmh"] == 20.0
     assert data["speed_stats"]["max_speed_kmh"] == 30.0
+
+
+# ---- hardening: counting-run identity, status, video scoping, tolerance, CLI, escaping ----
+
+COUNTING_CFG = '{"_run_stage": "counting"}'
+
+
+def test_zero_count_counting_rerun_does_not_borrow_sibling_crossings(conn) -> None:
+    _run(conn, "zero_run", "root", notes="Phase 06 vehicle counting run", config_json=COUNTING_CFG)
+    _cross(conn, "count_run", 10)
+    rep = compare_counts("zero_run", config=CFG, connection=conn)
+    assert rep["total_counted"] == 0
+
+
+def test_failed_selected_run_is_unavailable(conn) -> None:
+    _run(conn, "bad", "root", status="failed", notes="Failed: x", config_json=COUNTING_CFG)
+    _cross(conn, "count_run", 10)
+    with pytest.raises(ValueError):
+        compare_counts("bad", config=CFG, connection=conn)
+    assert get_dashboard_ground_truth("bad", config=CFG, connection=conn)["status"] == "unavailable"
+
+
+def test_failed_source_run_is_not_borrowed(conn) -> None:
+    conn.execute("UPDATE processing_runs SET status='failed' WHERE run_id='count_run'")
+    _cross(conn, "count_run", 10)
+    with pytest.raises(ValueError):
+        compare_counts("review_run", config=CFG, connection=conn)
+
+
+def test_cross_video_parent_is_ignored(conn) -> None:
+    conn.execute("INSERT INTO videos (video_id, filename, path, sha256, fps_nominal, width, height, duration_s, frame_count, variable_frame_rate, ingested_at, metadata_json) VALUES ('other','b.mp4','b.mp4',?,30,64,48,60,1800,0,'2026-10-14T08:00:00Z','{}')", ("1" * 64,))
+    _run(conn, "foreign_root", None, video="other")
+    _run(conn, "foreign_review", "foreign_root", video="other")
+    _run(conn, "cross_child", "foreign_root", video=VID)
+    _cross(conn, "count_run", 10)
+    from backend.database.repository import fetch_lineage_run_ids
+    assert fetch_lineage_run_ids(conn, "cross_child") == ["cross_child"]
+    with pytest.raises(ValueError):
+        compare_counts("cross_child", config=CFG, connection=conn)
+
+
+def test_zero_count_counting_sibling_makes_lineage_ambiguous(conn) -> None:
+    _run(conn, "zero_run", "root", notes="Phase 06 vehicle counting run", config_json=COUNTING_CFG)
+    _cross(conn, "count_run", 10)
+    with pytest.raises(ValueError):
+        compare_counts("review_run", config=CFG, connection=conn)
+
+
+def test_tolerance_headline_uses_total_and_rows_flagged_separately(conn) -> None:
+    conn.execute("INSERT INTO ground_truth_counts (ground_truth_count_id, ground_truth_set_id, video_segment_id, approach, movement, vehicle_class, observed_count) VALUES ('g2','gt','seg','north','through','truck',10)")
+    _cross(conn, "count_run", 10)  # cars 10/10, trucks 0/10 -> total 10/20 = 50% error
+    res = get_dashboard_ground_truth("count_run", config=CFG, connection=conn)
+    assert res["status"] == "out_of_tolerance"
+    conn.execute("DELETE FROM crossing_events")
+    conn.execute("UPDATE ground_truth_counts SET observed_count = 10 WHERE ground_truth_count_id='g1'")
+    conn.execute("UPDATE ground_truth_counts SET observed_count = 10 WHERE ground_truth_count_id='g2'")
+    # 12 cars, 8 trucks -> total 20/20 exact, rows 20% off
+    for i in range(12):
+        conn.execute("INSERT INTO crossing_events (crossing_event_id, run_id, video_id, line_id, track_id, frame_number, timestamp_s, vehicle_class, direction, approach, movement, line_config_version, deduplicated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)", (f"c{i}", "count_run", VID, "L", i, i, 1.0 + i, "car", "forward", "north", "through", "v"))
+    for i in range(8):
+        conn.execute("INSERT INTO crossing_events (crossing_event_id, run_id, video_id, line_id, track_id, frame_number, timestamp_s, vehicle_class, direction, approach, movement, line_config_version, deduplicated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)", (f"t{i}", "count_run", VID, "L", 100 + i, 100 + i, 1.0 + i, "truck", "forward", "north", "through", "v"))
+    res = get_dashboard_ground_truth("count_run", config=CFG, connection=conn)
+    assert res["status"] == "valid"
+    flags = [r["within_tolerance"] for r in res["report"]["comparisons"]]
+    assert flags and False in flags
+
+
+def test_compare_counts_cli_error_path(monkeypatch, capsys) -> None:
+    import json
+    from backend import cli
+
+    def boom(*a, **k):
+        raise ValueError("ambiguous lineage")
+
+    monkeypatch.setattr(cli, "compare_counts", boom)
+    monkeypatch.setattr("sys.argv", ["traffic-vision", "compare-counts", "run_x"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 1
+    err = json.loads(capsys.readouterr().err)
+    assert err["status"] == "unavailable" and "ambiguous" in err["error"]
+
+
+def test_app_js_escapes_api_data() -> None:
+    js = (Path(__file__).resolve().parent.parent / "frontend" / "app.js").read_text(encoding="utf-8")
+    for raw in ("${b.approach", "${b.movement", "${b.vehicle_class", "${data.export_dir}",
+                "${data.content_hash", "${err.message}"):
+        assert raw not in js.replace("escapeHtml(" + raw[2:], "")
+    assert "escapeHtml(err.message)" in js
+    assert "escapeHtml(data.export_dir)" in js
+    assert js.count("escapeHtml(`${") >= 3  # formatters escape inside

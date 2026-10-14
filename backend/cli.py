@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from backend.config import load_config
@@ -387,7 +388,11 @@ def main() -> None:
         print(json.dumps(result, sort_keys=True))
         return
     if args.command == "compare-counts":
-        report = compare_counts(args.run_id, ground_truth_set_id=args.ground_truth_set, config=config, repository_root=REPOSITORY_ROOT)
+        try:
+            report = compare_counts(args.run_id, ground_truth_set_id=args.ground_truth_set, config=config, repository_root=REPOSITORY_ROOT)
+        except ValueError as err:
+            print(json.dumps({"error": str(err), "run_id": args.run_id, "status": "unavailable"}, sort_keys=True), file=sys.stderr)
+            raise SystemExit(1)
         print(json.dumps(report, sort_keys=True))
         return
     if args.command == "calibrate":

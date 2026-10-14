@@ -102,13 +102,13 @@ def run_counting(
                 "video_id": video_id,
                 "model_version": parent["model_version"],
                 "config_hash": config_hash(config),
-                "config_json": canonical_json(config),
+                "config_json": canonical_json({**config, RUN_STAGE_KEY: COUNTING_STAGE}),
                 "schema_version": schema_version(),
                 "code_version": current_code_version(repository_root),
                 "source_video_sha256": parent["source_video_sha256"],
                 "started_at": _utc_now(),
                 "status": "running",
-                "notes": "Phase 06 vehicle counting run",
+                "notes": COUNTING_NOTES_PREFIX,
             },
         )
         conn.commit()
@@ -314,6 +314,27 @@ def load_ground_truth(
         return _execute(conn)
 
 
+RUN_STAGE_KEY = "_run_stage"
+COUNTING_STAGE = "counting"
+COUNTING_NOTES_PREFIX = "Phase 06 vehicle counting run"
+
+
+def _is_counting_run(conn: sqlite3.Connection, run: Any) -> bool:
+    """True if the run is a counting-stage run (structured marker, volume bins, or crossings)."""
+    try:
+        cfg = json.loads(run["config_json"] or "{}")
+        if isinstance(cfg, dict) and cfg.get(RUN_STAGE_KEY) == COUNTING_STAGE:
+            return True
+    except (TypeError, ValueError):
+        pass
+    if str(run["notes"] or "").startswith(COUNTING_NOTES_PREFIX):
+        return True
+    rid = run["run_id"]
+    if conn.execute("SELECT 1 FROM traffic_volume_bins WHERE run_id = ? LIMIT 1", (rid,)).fetchone():
+        return True
+    return bool(fetch_crossing_events_for_run(conn, rid))
+
+
 def compare_counts(
     run_id: str,
     ground_truth_set_id: str | None = None,
@@ -368,32 +389,39 @@ def compare_counts(
         ).fetchall()
 
         gt_counts = fetch_ground_truth_counts_for_set(conn, target_set_id)
-        crossings = fetch_crossing_events_for_run(conn, run_id)
-        if not crossings:
-            # The selected run may be a non-counting child/sibling (e.g. a review run);
-            # resolve the counting-stage run in the same lineage that holds the crossings.
-            holders = [
-                rid
-                for rid in fetch_lineage_run_ids(conn, run_id)
-                if rid != run_id and fetch_crossing_events_for_run(conn, rid)
-            ]
-            if len(holders) > 1:
+        if str(run["status"]) != "completed":
+            raise ValueError(
+                f"Run '{run_id}' has status '{run['status']}', not 'completed'; "
+                "ground-truth comparison unavailable"
+            )
+        if _is_counting_run(conn, run):
+            # A counting run is authoritative for its own results, even when it has zero crossings.
+            crossings = fetch_crossing_events_for_run(conn, run_id)
+        else:
+            # Non-counting run (e.g. review): borrow from the single completed counting run in lineage.
+            candidates = []
+            for rid in fetch_lineage_run_ids(conn, run_id):
+                if rid == run_id:
+                    continue
+                cand = fetch_run_by_id(conn, rid)
+                if (
+                    cand is not None
+                    and str(cand["status"]) == "completed"
+                    and str(cand["video_id"]) == video_id
+                    and _is_counting_run(conn, cand)
+                ):
+                    candidates.append(rid)
+            if len(candidates) > 1:
                 raise ValueError(
-                    f"Run '{run_id}' has no crossing events and multiple related runs hold "
-                    f"crossings ({', '.join(holders)}); ground-truth comparison unavailable"
+                    f"Run '{run_id}' is not a counting run and multiple related counting runs exist "
+                    f"({', '.join(candidates)}); ground-truth comparison unavailable"
                 )
-            if holders:
-                crossings = fetch_crossing_events_for_run(conn, holders[0])
-            else:
-                has_bins = conn.execute(
-                    "SELECT 1 FROM traffic_volume_bins WHERE run_id = ? LIMIT 1", (run_id,)
-                ).fetchone()
-                is_counting_run = "vehicle counting run" in str(run["notes"] or "")
-                if not has_bins and not is_counting_run:
-                    raise ValueError(
-                        f"Run '{run_id}' has no counting results in its lineage; "
-                        "ground-truth comparison unavailable"
-                    )
+            if not candidates:
+                raise ValueError(
+                    f"Run '{run_id}' has no completed counting run in its lineage; "
+                    "ground-truth comparison unavailable"
+                )
+            crossings = fetch_crossing_events_for_run(conn, candidates[0])
 
         error_tol = float((config or {}).get("counting", {}).get("error_tolerance_pct", 10.0))
 

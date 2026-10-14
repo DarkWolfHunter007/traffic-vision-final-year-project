@@ -44,7 +44,7 @@ function formatValue(val, unit = "") {
   if (val === null || val === undefined) {
     return `<span class="status-badge status-unavailable">Unavailable</span>`;
   }
-  return `${val}${unit ? " " + unit : ""}`;
+  return escapeHtml(`${val}${unit ? " " + unit : ""}`);
 }
 
 function formatNumber(val, decimals = 1, unit = "") {
@@ -52,14 +52,21 @@ function formatNumber(val, decimals = 1, unit = "") {
     return `<span class="status-badge status-unavailable">Unavailable</span>`;
   }
   const num = typeof val === "number" ? val.toFixed(decimals) : val;
-  return `${num}${unit ? " " + unit : ""}`;
+  return escapeHtml(`${num}${unit ? " " + unit : ""}`);
+}
+
+function plainText(val, unit = "") {
+  if (val === null || val === undefined) {
+    return "Unavailable";
+  }
+  return `${val}${unit ? " " + unit : ""}`;
 }
 
 function formatText(val, unit = "") {
   if (val === null || val === undefined) {
     return "Unavailable";
   }
-  return `${val}${unit ? " " + unit : ""}`;
+  return escapeHtml(`${val}${unit ? " " + unit : ""}`);
 }
 
 function renderVolumeChart(bins) {
@@ -188,9 +195,9 @@ async function loadRunDetails(runId) {
     document.getElementById("vm-resolution").textContent = (vm.width !== null && vm.width !== undefined && vm.height !== null && vm.height !== undefined)
       ? `${vm.width} × ${vm.height}`
       : "Unavailable";
-    document.getElementById("vm-fps").textContent = formatText(vm.fps_nominal, "fps");
-    document.getElementById("vm-duration").textContent = formatText(vm.duration_s, "s");
-    document.getElementById("vm-frames").textContent = formatText(vm.frame_count);
+    document.getElementById("vm-fps").textContent = plainText(vm.fps_nominal, "fps");
+    document.getElementById("vm-duration").textContent = plainText(vm.duration_s, "s");
+    document.getElementById("vm-frames").textContent = plainText(vm.frame_count);
     document.getElementById("vm-vfr").textContent = (vm.variable_frame_rate !== null && vm.variable_frame_rate !== undefined)
       ? (vm.variable_frame_rate ? "Yes (Variable Frame Rate)" : "No (Constant Frame Rate)")
       : "Unavailable";
@@ -207,14 +214,14 @@ async function loadRunDetails(runId) {
 
     // Update Tracking Quality
     const tq = summary.tracking_quality || {};
-    document.getElementById("tq-total-tracks").textContent = formatText(tq.total_tracks);
-    document.getElementById("tq-observations").textContent = formatText(tq.total_observations);
-    document.getElementById("tq-calibrated-pts").textContent = formatText(tq.calibrated_points_count);
+    document.getElementById("tq-total-tracks").textContent = plainText(tq.total_tracks);
+    document.getElementById("tq-observations").textContent = plainText(tq.total_observations);
+    document.getElementById("tq-calibrated-pts").textContent = plainText(tq.calibrated_points_count);
     const dist = tq.trajectory_status_counts || {};
-    document.getElementById("tq-complete").textContent = formatText(dist.complete);
-    document.getElementById("tq-active").textContent = formatText(dist.active);
-    document.getElementById("tq-fragmented").textContent = formatText(dist.fragmented);
-    document.getElementById("tq-invalid").textContent = formatText(dist.invalid);
+    document.getElementById("tq-complete").textContent = plainText(dist.complete);
+    document.getElementById("tq-active").textContent = plainText(dist.active);
+    document.getElementById("tq-fragmented").textContent = plainText(dist.fragmented);
+    document.getElementById("tq-invalid").textContent = plainText(dist.invalid);
 
     // Update Volume Bins & Chart
     const bins = binsData.bins || [];
@@ -257,11 +264,11 @@ async function loadRunDetails(runId) {
           <tr>
             <td>${formatText(b.bin_start_s, "s")}</td>
             <td>${formatText(b.observed_duration_s, "s")}</td>
-            <td>${b.approach || "Unavailable"}</td>
-            <td>${b.movement || "Unavailable"}</td>
-            <td>${b.vehicle_class || "Unavailable"}</td>
+            <td>${escapeHtml(b.approach || "Unavailable")}</td>
+            <td>${escapeHtml(b.movement || "Unavailable")}</td>
+            <td>${escapeHtml(b.vehicle_class || "Unavailable")}</td>
             <td><strong>${formatText(b.count)}</strong></td>
-            <td>${b.extrapolated_vehicles_per_hour !== null && b.extrapolated_vehicles_per_hour !== undefined ? b.extrapolated_vehicles_per_hour : badgeHtml("unavailable")}</td>
+            <td>${b.extrapolated_vehicles_per_hour !== null && b.extrapolated_vehicles_per_hour !== undefined ? escapeHtml(b.extrapolated_vehicles_per_hour) : badgeHtml("unavailable")}</td>
           </tr>
         `).join("");
       }
@@ -293,13 +300,13 @@ async function loadRunDetails(runId) {
 
     // Update Review Status
     const rev = summary.review_status || {};
-    document.getElementById("rev-total").textContent = formatText(rev.total_reviews);
-    document.getElementById("rev-approved").textContent = formatText(rev.approved_count);
-    document.getElementById("rev-pending").textContent = formatText(rev.pending_count);
-    document.getElementById("rev-rejected").textContent = formatText(rev.rejected_count);
-    document.getElementById("rev-class-corr").textContent = formatText(rev.class_corrected_count);
-    document.getElementById("rev-bbox-corr").textContent = formatText(rev.bbox_corrected_count);
-    document.getElementById("rev-snippets").textContent = formatText(rev.snippet_count);
+    document.getElementById("rev-total").textContent = plainText(rev.total_reviews);
+    document.getElementById("rev-approved").textContent = plainText(rev.approved_count);
+    document.getElementById("rev-pending").textContent = plainText(rev.pending_count);
+    document.getElementById("rev-rejected").textContent = plainText(rev.rejected_count);
+    document.getElementById("rev-class-corr").textContent = plainText(rev.class_corrected_count);
+    document.getElementById("rev-bbox-corr").textContent = plainText(rev.bbox_corrected_count);
+    document.getElementById("rev-snippets").textContent = plainText(rev.snippet_count);
 
     // Update Ground-Truth Comparison
     const gtRes = await fetch(`/api/runs/${encodeURIComponent(runId)}/ground-truth`);
@@ -313,7 +320,7 @@ async function loadRunDetails(runId) {
       const compRows = gtData.report.comparisons || [];
       if (gtTbody) {
         if (compRows.length === 0) {
-          gtTbody.innerHTML = `<tr><td colspan="9" class="empty-cell">No comparison rows evaluated for this ground-truth set.</td></tr>`;
+          gtTbody.innerHTML = `<tr><td colspan="10" class="empty-cell">No comparison rows evaluated for this ground-truth set.</td></tr>`;
         } else {
           gtTbody.innerHTML = compRows.map(r => `
             <tr>
@@ -324,8 +331,9 @@ async function loadRunDetails(runId) {
               <td>${formatText(r.counted)}</td>
               <td>${formatText(r.observed)}</td>
               <td>${formatText(r.absolute_error)}</td>
-              <td>${r.percent_error !== null && r.percent_error !== undefined ? Number(r.percent_error).toFixed(1) + "%" : "Unavailable"}</td>
-              <td>${gtData.report.error_tolerance_pct !== null && gtData.report.error_tolerance_pct !== undefined ? gtData.report.error_tolerance_pct + "%" : "Unavailable"}</td>
+              <td>${r.percent_error !== null && r.percent_error !== undefined ? escapeHtml(Number(r.percent_error).toFixed(1) + "%") : "Unavailable"}</td>
+              <td>${gtData.report.error_tolerance_pct !== null && gtData.report.error_tolerance_pct !== undefined ? escapeHtml(gtData.report.error_tolerance_pct + "%") : "Unavailable"}</td>
+              <td>${r.within_tolerance === false ? badgeHtml("out_of_tolerance") : (r.within_tolerance === true ? badgeHtml("valid") : badgeHtml("unavailable"))}</td>
             </tr>
           `).join("");
         }
@@ -334,14 +342,14 @@ async function loadRunDetails(runId) {
       setBadge("gt-status-badge", "unavailable");
       if (gtMsg) gtMsg.textContent = "No manual reference counts configured for this video. Ground-truth comparison unavailable.";
       if (gtTbody) {
-        gtTbody.innerHTML = `<tr><td colspan="9" class="empty-cell">No manual reference counts configured for this run.</td></tr>`;
+        gtTbody.innerHTML = `<tr><td colspan="10" class="empty-cell">No manual reference counts configured for this run.</td></tr>`;
       }
     }
 
   } catch (err) {
     console.error("Failed to load run details:", err);
     if (exportBanner) {
-      exportBanner.textContent = `Error loading run: ${err.message}`;
+      exportBanner.textContent = `Error loading run: ${escapeHtml(err.message)}`;
     }
   }
 }
@@ -367,11 +375,11 @@ async function triggerExport(runId) {
 
     const data = await res.json();
     if (banner) {
-      banner.innerHTML = `<strong>Export complete:</strong> Saved to <code>${data.export_dir}</code>. Content hash: <code>${data.content_hash.substring(0, 16)}...</code> (${data.exported_files.length} files generated).`;
+      banner.innerHTML = `<strong>Export complete:</strong> Saved to <code>${escapeHtml(data.export_dir)}</code>. Content hash: <code>${escapeHtml(String(data.content_hash).substring(0, 16))}...</code> (${escapeHtml(data.exported_files.length)} files generated).`;
     }
   } catch (err) {
     if (banner) {
-      banner.innerHTML = `<span style="color:#fda4af;">Export error: ${err.message}</span>`;
+      banner.innerHTML = `<span style="color:#fda4af;">Export error: ${escapeHtml(err.message)}</span>`;
     }
   } finally {
     if (btn) btn.disabled = false;
@@ -414,7 +422,7 @@ async function initDashboard() {
     }
   } catch (err) {
     console.error("Dashboard initialization failed:", err);
-    selector.innerHTML = `<option value="" disabled selected>Failed to load runs: ${err.message}</option>`;
+    selector.innerHTML = `<option value="" disabled selected>Failed to load runs: ${escapeHtml(err.message)}</option>`;
   }
 }
 

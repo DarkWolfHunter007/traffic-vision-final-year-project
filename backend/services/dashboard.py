@@ -28,15 +28,25 @@ def _resolve_db_path(config: Mapping[str, Any] | None, repository_root: Path | N
 
 
 def ground_truth_status(report: Mapping[str, Any]) -> str:
-    """'valid' when every comparison and the total are within tolerance, else 'out_of_tolerance'."""
+    """Headline badge: 'valid' when the TOTAL percent error is within tolerance, else 'out_of_tolerance'.
+
+    This matches ``services.evaluation`` (``tolerance_met`` uses the total only). Individual
+    comparison rows over tolerance are flagged separately via ``annotate_row_tolerance``
+    (``within_tolerance`` per row) and do not change the headline status.
+    """
     tol = float(report.get("error_tolerance_pct", 10.0))
-    errors = [report.get("total_percent_error")] + [
-        c.get("percent_error") for c in report.get("comparisons", [])
-    ]
-    for err in errors:
-        if err is None or float(err) > tol:
-            return "out_of_tolerance"
+    err = report.get("total_percent_error")
+    if err is None or float(err) > tol:
+        return "out_of_tolerance"
     return "valid"
+
+
+def annotate_row_tolerance(report: Mapping[str, Any]) -> None:
+    """Add a per-row ``within_tolerance`` flag (None when the row error is unavailable)."""
+    tol = float(report.get("error_tolerance_pct", 10.0))
+    for row in report.get("comparisons", []) or []:
+        err = row.get("percent_error")
+        row["within_tolerance"] = None if err is None else float(err) <= tol
 
 
 def get_dashboard_runs(
@@ -117,6 +127,7 @@ def get_dashboard_run_summary(
         gt_report = None
         try:
             gt_report = compare_counts(run_id, config=config, repository_root=repository_root, connection=conn)
+            annotate_row_tolerance(gt_report)
             gt_status = ground_truth_status(gt_report)
         except (ValueError, KeyError):
             gt_status = "unavailable"
@@ -310,6 +321,7 @@ def get_dashboard_ground_truth(
             raise ValueError(f"Processing run '{run_id}' not found")
         try:
             report = compare_counts(run_id, config=config, repository_root=repository_root, connection=conn)
+            annotate_row_tolerance(report)
             return {"run_id": run_id, "status": ground_truth_status(report), "report": report}
         except (ValueError, KeyError) as err:
             return {
