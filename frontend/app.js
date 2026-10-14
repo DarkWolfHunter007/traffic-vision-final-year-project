@@ -8,11 +8,36 @@ function badgeHtml(status) {
   const labelMap = {
     valid: "Valid",
     invalid: "Invalid",
+    out_of_tolerance: "Out of tolerance",
     unavailable: "Unavailable",
     unvalidated: "Unvalidated",
   };
   const label = labelMap[s] || "Unavailable";
   return `<span class="status-badge status-${s}">${label}</span>`;
+}
+
+function escapeHtml(val) {
+  return String(val === null || val === undefined ? "" : val)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function setBadge(id, status) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const s = (status || "unavailable").toLowerCase();
+  const labelMap = {
+    valid: "Valid",
+    invalid: "Invalid",
+    out_of_tolerance: "Out of tolerance",
+    unavailable: "Unavailable",
+    unvalidated: "Unvalidated",
+  };
+  el.textContent = labelMap[s] || "Unavailable";
+  el.className = `status-badge status-${labelMap[s] ? s : "unavailable"}`;
 }
 
 function formatValue(val, unit = "") {
@@ -173,13 +198,12 @@ async function loadRunDetails(runId) {
 
     // Update Validation Status Badges
     const vs = summary.validation_status || {};
-    document.getElementById("st-calibration").outerHTML = badgeHtml(vs.calibration);
-    document.getElementById("st-calibration") || (document.querySelector(".status-grid").children[0].lastElementChild.id = "st-calibration");
-    document.getElementById("st-tracking").outerHTML = badgeHtml(vs.tracking);
-    document.getElementById("st-speed").outerHTML = badgeHtml(vs.speed);
-    document.getElementById("st-queue").outerHTML = badgeHtml(vs.queue);
-    document.getElementById("st-counting").outerHTML = badgeHtml(vs.counting);
-    document.getElementById("st-ground-truth").outerHTML = badgeHtml(vs.ground_truth);
+    setBadge("st-calibration", vs.calibration);
+    setBadge("st-tracking", vs.tracking);
+    setBadge("st-speed", vs.speed);
+    setBadge("st-queue", vs.queue);
+    setBadge("st-counting", vs.counting);
+    setBadge("st-ground-truth", vs.ground_truth);
 
     // Update Tracking Quality
     const tq = summary.tracking_quality || {};
@@ -280,12 +304,11 @@ async function loadRunDetails(runId) {
     // Update Ground-Truth Comparison
     const gtRes = await fetch(`/api/runs/${encodeURIComponent(runId)}/ground-truth`);
     const gtData = gtRes.ok ? await gtRes.json() : { status: "unavailable", report: null };
-    const gtBadge = document.getElementById("gt-status-badge");
     const gtMsg = document.getElementById("gt-message");
     const gtTbody = document.getElementById("gt-table-body");
 
-    if (gtData.status === "valid" && gtData.report) {
-      if (gtBadge) gtBadge.outerHTML = badgeHtml("valid");
+    if ((gtData.status === "valid" || gtData.status === "out_of_tolerance") && gtData.report) {
+      setBadge("gt-status-badge", gtData.status);
       if (gtMsg) gtMsg.textContent = `Evaluated against reference set: ${gtData.report.ground_truth_set_name || gtData.report.ground_truth_set_id}. Error tolerance: ${gtData.report.error_tolerance_pct}%. Research audit only.`;
       const compRows = gtData.report.comparisons || [];
       if (gtTbody) {
@@ -294,21 +317,21 @@ async function loadRunDetails(runId) {
         } else {
           gtTbody.innerHTML = compRows.map(r => `
             <tr>
-              <td>${r.segment_label || r.video_segment_id || "Clip"}</td>
-              <td>${r.approach || "All"}</td>
-              <td>${r.movement || "All"}</td>
-              <td>${r.vehicle_class || "All"}</td>
-              <td>${formatText(r.counted_count)}</td>
-              <td>${formatText(r.observed_count)}</td>
+              <td>${escapeHtml(r.video_segment_id || "Clip")}</td>
+              <td>${escapeHtml(r.approach || "All")}</td>
+              <td>${escapeHtml(r.movement || "All")}</td>
+              <td>${escapeHtml(r.vehicle_class || "All")}</td>
+              <td>${formatText(r.counted)}</td>
+              <td>${formatText(r.observed)}</td>
               <td>${formatText(r.absolute_error)}</td>
-              <td>${r.percentage_error !== null && r.percentage_error !== undefined ? r.percentage_error.toFixed(1) + "%" : "Unavailable"}</td>
+              <td>${r.percent_error !== null && r.percent_error !== undefined ? Number(r.percent_error).toFixed(1) + "%" : "Unavailable"}</td>
               <td>${gtData.report.error_tolerance_pct !== null && gtData.report.error_tolerance_pct !== undefined ? gtData.report.error_tolerance_pct + "%" : "Unavailable"}</td>
             </tr>
           `).join("");
         }
       }
     } else {
-      if (gtBadge) gtBadge.outerHTML = badgeHtml("unavailable");
+      setBadge("gt-status-badge", "unavailable");
       if (gtMsg) gtMsg.textContent = "No manual reference counts configured for this video. Ground-truth comparison unavailable.";
       if (gtTbody) {
         gtTbody.innerHTML = `<tr><td colspan="9" class="empty-cell">No manual reference counts configured for this run.</td></tr>`;
@@ -371,7 +394,7 @@ async function initDashboard() {
 
     selector.innerHTML = runs.map(r => {
       const label = `${r.run_id} (${r.status} | ${r.notes || r.video_id})`;
-      return `<option value="${r.run_id}">${label}</option>`;
+      return `<option value="${escapeHtml(r.run_id)}">${escapeHtml(label)}</option>`;
     }).join("");
 
     selector.addEventListener("change", (e) => {

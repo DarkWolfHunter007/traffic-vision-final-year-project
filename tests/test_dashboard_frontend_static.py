@@ -112,3 +112,17 @@ def test_index_html_initial_placeholders_not_zero(index_html_content: str) -> No
 
     # Ensure no review element has initial text "0"
     assert not re.search(r'id="rev-[a-zA-Z0-9-]+">\s*0\s*<', index_html_content)
+
+
+def test_ground_truth_table_uses_api_field_names(app_js_content: str) -> None:
+    for stale in ("counted_count", "observed_count", "percentage_error", "segment_label"):
+        assert stale not in app_js_content
+    for field in ("r.counted", "r.observed", "r.percent_error", "r.video_segment_id"):
+        assert field in app_js_content
+
+
+def test_badges_updated_in_place_and_options_escaped(app_js_content: str) -> None:
+    assert "outerHTML" not in app_js_content
+    assert "out_of_tolerance" in app_js_content
+    assert "escapeHtml(r.run_id)" in app_js_content
+    assert "escapeHtml(label)" in app_js_content

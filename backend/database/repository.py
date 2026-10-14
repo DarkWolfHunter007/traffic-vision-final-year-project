@@ -566,9 +566,17 @@ def fetch_speed_observations_for_run(
     ).fetchall()
 
 
-def fetch_speed_observation_stats(connection: sqlite3.Connection, run_id: str) -> dict[str, object]:
+def _as_run_id_list(run_id: str | Iterable[str]) -> list[str]:
+    return [run_id] if isinstance(run_id, str) else list(run_id)
+
+
+def fetch_speed_observation_stats(
+    connection: sqlite3.Connection, run_id: str | Iterable[str]
+) -> dict[str, object]:
+    """Speed stats for one run id or aggregated across several run ids."""
+    run_ids = _as_run_id_list(run_id)
     row = connection.execute(
-        """
+        f"""
         SELECT
             COUNT(*) as total_count,
             SUM(CASE WHEN status = 'valid' THEN 1 ELSE 0 END) as valid_count,
@@ -579,9 +587,9 @@ def fetch_speed_observation_stats(connection: sqlite3.Connection, run_id: str) -
             AVG(CASE WHEN status = 'valid' THEN speed_mps ELSE NULL END) as mean_speed_mps,
             MAX(CASE WHEN status = 'valid' THEN speed_mps ELSE NULL END) as max_speed_mps
         FROM speed_observations
-        WHERE run_id = ?
+        WHERE run_id IN ({','.join('?' for _ in run_ids)})
         """,
-        (run_id,),
+        run_ids,
     ).fetchone()
 
     if row is None:
@@ -687,22 +695,27 @@ def fetch_queue_events_for_run(
     return connection.execute(query, params).fetchall()
 
 
-def fetch_queue_detection_stats(connection: sqlite3.Connection, run_id: str) -> dict[str, object]:
+def fetch_queue_detection_stats(
+    connection: sqlite3.Connection, run_id: str | Iterable[str]
+) -> dict[str, object]:
+    """Stop/queue stats for one run id or aggregated across several run ids."""
+    run_ids = _as_run_id_list(run_id)
+    placeholders = ",".join("?" for _ in run_ids)
     stop_row = connection.execute(
-        """
+        f"""
         SELECT
             COUNT(*) as total_stops,
             SUM(CASE WHEN status = 'valid' THEN 1 ELSE 0 END) as valid_stops,
             AVG(CASE WHEN status = 'valid' THEN duration_s ELSE NULL END) as mean_stop_duration_s,
             MAX(CASE WHEN status = 'valid' THEN duration_s ELSE NULL END) as max_stop_duration_s
         FROM stop_events
-        WHERE run_id = ?
+        WHERE run_id IN ({placeholders})
         """,
-        (run_id,),
+        run_ids,
     ).fetchone()
 
     queue_row = connection.execute(
-        """
+        f"""
         SELECT
             COUNT(*) as total_queue_events,
             SUM(CASE WHEN status = 'valid' THEN 1 ELSE 0 END) as valid_queue_events,
@@ -713,9 +726,9 @@ def fetch_queue_detection_stats(connection: sqlite3.Connection, run_id: str) -> 
             MAX(CASE WHEN status = 'valid' THEN queue_length_m ELSE NULL END) as max_queue_length_m,
             MAX(queued_vehicle_count) as max_queued_vehicles
         FROM queue_events
-        WHERE run_id = ?
+        WHERE run_id IN ({placeholders})
         """,
-        (run_id,),
+        run_ids,
     ).fetchone()
 
     return {
@@ -1097,6 +1110,25 @@ def fetch_tracking_quality_stats(connection: sqlite3.Connection, run_id: str) ->
     }
 
 
+def fetch_lineage_run_ids(connection: sqlite3.Connection, run_id: str) -> list[str]:
+    """Run ids related to ``run_id``: itself, parent, siblings and children (deterministic order)."""
+    related = [run_id]
+    row = connection.execute(
+        "SELECT parent_run_id FROM processing_runs WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    parent_id = row["parent_run_id"] if row else None
+    queries = []
+    if parent_id:
+        related.append(parent_id)
+        queries.append(("SELECT run_id FROM processing_runs WHERE parent_run_id = ? ORDER BY run_id", parent_id))
+    queries.append(("SELECT run_id FROM processing_runs WHERE parent_run_id = ? ORDER BY run_id", run_id))
+    for sql, arg in queries:
+        for r in connection.execute(sql, (arg,)).fetchall():
+            if r["run_id"] not in related:
+                related.append(r["run_id"])
+    return related
+
+
 def fetch_run_export_data(
     connection: sqlite3.Connection, run_id: str, include_raw: bool = True
 ) -> dict[str, object] | None:
@@ -1185,12 +1217,12 @@ def fetch_run_export_data(
         "mean_speed_mps": None,
         "max_speed_mps": None,
     }
-    for rid in related_run_ids:
-        s_stats = fetch_speed_observation_stats(connection, rid)
-        if s_stats.get("total_count", 0) > 0:
-            speed_stats = dict(s_stats)
-            speed_stats["total_observations"] = s_stats["total_count"]
-            break
+    # Aggregate across the whole lineage (not just the first run with rows), so the
+    # summary is consistent with the exported speed_observations rows.
+    s_stats = fetch_speed_observation_stats(connection, related_run_ids)
+    if s_stats.get("total_count", 0) > 0:
+        speed_stats = dict(s_stats)
+        speed_stats["total_observations"] = s_stats["total_count"]
 
     # 4. Stop events
     stop_rows = connection.execute(
@@ -1231,11 +1263,9 @@ def fetch_run_export_data(
         "max_queue_length_m": None,
         "max_queued_vehicles": 0,
     }
-    for rid in related_run_ids:
-        q_s = fetch_queue_detection_stats(connection, rid)
-        if q_s.get("total_stops", 0) > 0 or q_s.get("total_queue_events", 0) > 0:
-            raw_q_stats = q_s
-            break
+    q_s = fetch_queue_detection_stats(connection, related_run_ids)
+    if q_s.get("total_stops", 0) > 0 or q_s.get("total_queue_events", 0) > 0:
+        raw_q_stats = q_s
 
     queue_stats = {
         **raw_q_stats,

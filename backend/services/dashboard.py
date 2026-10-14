@@ -27,6 +27,18 @@ def _resolve_db_path(config: Mapping[str, Any] | None, repository_root: Path | N
     return db_path
 
 
+def ground_truth_status(report: Mapping[str, Any]) -> str:
+    """'valid' when every comparison and the total are within tolerance, else 'out_of_tolerance'."""
+    tol = float(report.get("error_tolerance_pct", 10.0))
+    errors = [report.get("total_percent_error")] + [
+        c.get("percent_error") for c in report.get("comparisons", [])
+    ]
+    for err in errors:
+        if err is None or float(err) > tol:
+            return "out_of_tolerance"
+    return "valid"
+
+
 def get_dashboard_runs(
     config: Mapping[str, Any] | None = None,
     repository_root: Path | None = None,
@@ -105,7 +117,7 @@ def get_dashboard_run_summary(
         gt_report = None
         try:
             gt_report = compare_counts(run_id, config=config, repository_root=repository_root, connection=conn)
-            gt_status = "valid"
+            gt_status = ground_truth_status(gt_report)
         except (ValueError, KeyError):
             gt_status = "unavailable"
 
@@ -298,7 +310,7 @@ def get_dashboard_ground_truth(
             raise ValueError(f"Processing run '{run_id}' not found")
         try:
             report = compare_counts(run_id, config=config, repository_root=repository_root, connection=conn)
-            return {"run_id": run_id, "status": "valid", "report": report}
+            return {"run_id": run_id, "status": ground_truth_status(report), "report": report}
         except (ValueError, KeyError) as err:
             return {
                 "run_id": run_id,

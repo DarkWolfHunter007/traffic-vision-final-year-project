@@ -25,6 +25,7 @@ from backend.counting import (
 )
 from backend.database.connection import database_connection, schema_version
 from backend.database.repository import (
+    fetch_lineage_run_ids,
     fetch_counting_lines_for_video,
     fetch_crossing_events_for_run,
     fetch_ground_truth_counts_for_set,
@@ -368,6 +369,31 @@ def compare_counts(
 
         gt_counts = fetch_ground_truth_counts_for_set(conn, target_set_id)
         crossings = fetch_crossing_events_for_run(conn, run_id)
+        if not crossings:
+            # The selected run may be a non-counting child/sibling (e.g. a review run);
+            # resolve the counting-stage run in the same lineage that holds the crossings.
+            holders = [
+                rid
+                for rid in fetch_lineage_run_ids(conn, run_id)
+                if rid != run_id and fetch_crossing_events_for_run(conn, rid)
+            ]
+            if len(holders) > 1:
+                raise ValueError(
+                    f"Run '{run_id}' has no crossing events and multiple related runs hold "
+                    f"crossings ({', '.join(holders)}); ground-truth comparison unavailable"
+                )
+            if holders:
+                crossings = fetch_crossing_events_for_run(conn, holders[0])
+            else:
+                has_bins = conn.execute(
+                    "SELECT 1 FROM traffic_volume_bins WHERE run_id = ? LIMIT 1", (run_id,)
+                ).fetchone()
+                is_counting_run = "vehicle counting run" in str(run["notes"] or "")
+                if not has_bins and not is_counting_run:
+                    raise ValueError(
+                        f"Run '{run_id}' has no counting results in its lineage; "
+                        "ground-truth comparison unavailable"
+                    )
 
         error_tol = float((config or {}).get("counting", {}).get("error_tolerance_pct", 10.0))
 
