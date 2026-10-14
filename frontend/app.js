@@ -30,6 +30,13 @@ function formatNumber(val, decimals = 1, unit = "") {
   return `${num}${unit ? " " + unit : ""}`;
 }
 
+function formatText(val, unit = "") {
+  if (val === null || val === undefined) {
+    return "Unavailable";
+  }
+  return `${val}${unit ? " " + unit : ""}`;
+}
+
 function renderVolumeChart(bins) {
   const svg = document.getElementById("volume-chart");
   if (!svg) return;
@@ -42,15 +49,30 @@ function renderVolumeChart(bins) {
     return;
   }
 
-  // Aggregate counts by bin_start_s
+  // Aggregate counts by bin_start_s without converting missing counts to 0
   const binMap = new Map();
   for (const b of bins) {
-    const t = b.bin_start_s || 0;
-    binMap.set(t, (binMap.get(t) || 0) + (b.count || 0));
+    const t = (b.bin_start_s !== null && b.bin_start_s !== undefined) ? b.bin_start_s : null;
+    const key = t !== null ? String(t) : `unknown_${Math.random()}`;
+    if (!binMap.has(key)) {
+      binMap.set(key, { startTime: t, count: 0, hasCount: false });
+    }
+    const entry = binMap.get(key);
+    if (b.count !== null && b.count !== undefined) {
+      entry.count += Number(b.count);
+      entry.hasCount = true;
+    }
   }
 
-  const sortedBins = Array.from(binMap.entries()).sort((a, b) => a[0] - b[0]);
-  const maxCount = Math.max(...sortedBins.map(([, c]) => c), 1);
+  const entries = Array.from(binMap.values());
+  const sortedBins = entries.sort((a, b) => {
+    if (a.startTime === null) return 1;
+    if (b.startTime === null) return -1;
+    return a.startTime - b.startTime;
+  });
+
+  const availableCounts = sortedBins.filter(e => e.hasCount).map(e => e.count);
+  const maxCount = availableCounts.length > 0 ? Math.max(...availableCounts, 1) : 1;
 
   const width = 760;
   const height = 180;
@@ -76,21 +98,43 @@ function renderVolumeChart(bins) {
     <text x="${padLeft - 8}" y="${padTop + chartH + 4}" fill="#94a3b8" font-size="10" text-anchor="end">0</text>
   `);
 
-  // Bars
-  sortedBins.forEach(([startTime, count], idx) => {
-    const barH = (count / maxCount) * chartH;
-    const x = padLeft + idx * step + (step - barWidth) / 2;
-    const y = padTop + chartH - barH;
-    const timeLabel = `${Math.round(startTime / 60)}m`;
+  let unavailableCount = 0;
 
-    elements.push(`
-      <rect x="${x}" y="${y}" width="${barWidth}" height="${barH}" fill="#38bdf8" rx="2">
-        <title>Start: ${startTime}s (${timeLabel}) — Count: ${count}</title>
-      </rect>
-      <text x="${x + barWidth / 2}" y="${padTop + chartH + 16}" fill="#94a3b8" font-size="9" text-anchor="middle">${timeLabel}</text>
-      <text x="${x + barWidth / 2}" y="${y - 4}" fill="#cbd5e1" font-size="9" text-anchor="middle">${count}</text>
-    `);
+  // Bars
+  sortedBins.forEach((entry, idx) => {
+    const x = padLeft + idx * step + (step - barWidth) / 2;
+    const startTime = entry.startTime;
+    const timeLabel = startTime !== null ? `${Math.round(startTime / 60)}m` : "Unavailable";
+
+    if (entry.hasCount) {
+      const count = entry.count;
+      const barH = (count / maxCount) * chartH;
+      const y = padTop + chartH - barH;
+
+      elements.push(`
+        <rect x="${x}" y="${y}" width="${barWidth}" height="${barH}" fill="#38bdf8" rx="2">
+          <title>Start: ${startTime !== null ? startTime + "s" : "Unavailable"} (${timeLabel}) — Count: ${count}</title>
+        </rect>
+        <text x="${x + barWidth / 2}" y="${padTop + chartH + 16}" fill="#94a3b8" font-size="9" text-anchor="middle">${timeLabel}</text>
+        <text x="${x + barWidth / 2}" y="${y - 4}" fill="#cbd5e1" font-size="9" text-anchor="middle">${count}</text>
+      `);
+    } else {
+      unavailableCount++;
+      elements.push(`
+        <rect x="${x}" y="${padTop}" width="${barWidth}" height="${chartH}" fill="rgba(148, 163, 184, 0.08)" stroke="#64748b" stroke-dasharray="2,2" rx="2">
+          <title>Start: ${startTime !== null ? startTime + "s" : "Unavailable"} (${timeLabel}) — Count: Unavailable</title>
+        </rect>
+        <text x="${x + barWidth / 2}" y="${padTop + chartH + 16}" fill="#94a3b8" font-size="9" text-anchor="middle">${timeLabel}</text>
+        <text x="${x + barWidth / 2}" y="${padTop + 14}" fill="#94a3b8" font-size="8" text-anchor="middle">Unavailable</text>
+      `);
+    }
   });
+
+  if (unavailableCount > 0) {
+    elements.push(`
+      <text x="${width - padRight}" y="${padTop - 6}" fill="#94a3b8" font-size="9" text-anchor="end">* ${unavailableCount} bin(s) with unavailable count</text>
+    `);
+  }
 
   svg.innerHTML = elements.join("\n");
 }
@@ -116,11 +160,15 @@ async function loadRunDetails(runId) {
     document.getElementById("vm-video-id").textContent = vm.video_id || "Unavailable";
     document.getElementById("vm-filename").textContent = vm.filename || "Unavailable";
     document.getElementById("vm-sha256").textContent = vm.sha256 || "Unavailable";
-    document.getElementById("vm-resolution").textContent = (vm.width && vm.height) ? `${vm.width} × ${vm.height}` : "Unavailable";
-    document.getElementById("vm-fps").textContent = vm.fps_nominal !== undefined ? `${vm.fps_nominal} fps` : "Unavailable";
-    document.getElementById("vm-duration").textContent = vm.duration_s !== undefined ? `${vm.duration_s} s` : "Unavailable";
-    document.getElementById("vm-frames").textContent = vm.frame_count !== undefined ? vm.frame_count : "Unavailable";
-    document.getElementById("vm-vfr").textContent = vm.variable_frame_rate ? "Yes (Variable Frame Rate)" : "No (Constant Frame Rate)";
+    document.getElementById("vm-resolution").textContent = (vm.width !== null && vm.width !== undefined && vm.height !== null && vm.height !== undefined)
+      ? `${vm.width} × ${vm.height}`
+      : "Unavailable";
+    document.getElementById("vm-fps").textContent = formatText(vm.fps_nominal, "fps");
+    document.getElementById("vm-duration").textContent = formatText(vm.duration_s, "s");
+    document.getElementById("vm-frames").textContent = formatText(vm.frame_count);
+    document.getElementById("vm-vfr").textContent = (vm.variable_frame_rate !== null && vm.variable_frame_rate !== undefined)
+      ? (vm.variable_frame_rate ? "Yes (Variable Frame Rate)" : "No (Constant Frame Rate)")
+      : "Unavailable";
     document.getElementById("vm-wall-clock").textContent = vm.wall_clock_start || "Unavailable";
 
     // Update Validation Status Badges
@@ -135,21 +183,43 @@ async function loadRunDetails(runId) {
 
     // Update Tracking Quality
     const tq = summary.tracking_quality || {};
-    document.getElementById("tq-total-tracks").textContent = tq.total_tracks !== undefined ? tq.total_tracks : "Unavailable";
-    document.getElementById("tq-observations").textContent = tq.total_observations !== undefined ? tq.total_observations : "Unavailable";
-    document.getElementById("tq-calibrated-pts").textContent = tq.calibrated_points_count !== undefined ? tq.calibrated_points_count : "Unavailable";
+    document.getElementById("tq-total-tracks").textContent = formatText(tq.total_tracks);
+    document.getElementById("tq-observations").textContent = formatText(tq.total_observations);
+    document.getElementById("tq-calibrated-pts").textContent = formatText(tq.calibrated_points_count);
     const dist = tq.trajectory_status_counts || {};
-    document.getElementById("tq-complete").textContent = dist.complete !== undefined ? dist.complete : "Unavailable";
-    document.getElementById("tq-active").textContent = dist.active !== undefined ? dist.active : "Unavailable";
-    document.getElementById("tq-fragmented").textContent = dist.fragmented !== undefined ? dist.fragmented : "Unavailable";
-    document.getElementById("tq-invalid").textContent = dist.invalid !== undefined ? dist.invalid : "Unavailable";
+    document.getElementById("tq-complete").textContent = formatText(dist.complete);
+    document.getElementById("tq-active").textContent = formatText(dist.active);
+    document.getElementById("tq-fragmented").textContent = formatText(dist.fragmented);
+    document.getElementById("tq-invalid").textContent = formatText(dist.invalid);
 
     // Update Volume Bins & Chart
     const bins = binsData.bins || [];
     const pill = document.getElementById("bins-summary-pill");
-    const totalCount = bins.reduce((acc, b) => acc + (b.count || 0), 0);
     if (pill) {
-      pill.textContent = `${bins.length} bins recorded (${totalCount} vehicles)`;
+      if (bins.length === 0) {
+        pill.textContent = "0 bins recorded";
+      } else {
+        let totalCount = 0;
+        let hasAvailableCount = false;
+        let hasUnavailableCount = false;
+
+        for (const b of bins) {
+          if (b.count !== null && b.count !== undefined) {
+            totalCount += Number(b.count);
+            hasAvailableCount = true;
+          } else {
+            hasUnavailableCount = true;
+          }
+        }
+
+        if (!hasAvailableCount) {
+          pill.textContent = `${bins.length} bins recorded (vehicle count Unavailable)`;
+        } else if (hasUnavailableCount) {
+          pill.textContent = `${bins.length} bins recorded (${totalCount} vehicles recorded, some Unavailable)`;
+        } else {
+          pill.textContent = `${bins.length} bins recorded (${totalCount} vehicles)`;
+        }
+      }
     }
 
     renderVolumeChart(bins);
@@ -161,12 +231,12 @@ async function loadRunDetails(runId) {
       } else {
         tbody.innerHTML = bins.map(b => `
           <tr>
-            <td>${b.bin_start_s !== undefined ? b.bin_start_s + " s" : "Unavailable"}</td>
-            <td>${b.observed_duration_s !== null && b.observed_duration_s !== undefined ? b.observed_duration_s + " s" : "Unavailable"}</td>
+            <td>${formatText(b.bin_start_s, "s")}</td>
+            <td>${formatText(b.observed_duration_s, "s")}</td>
             <td>${b.approach || "Unavailable"}</td>
             <td>${b.movement || "Unavailable"}</td>
             <td>${b.vehicle_class || "Unavailable"}</td>
-            <td><strong>${b.count !== undefined ? b.count : "Unavailable"}</strong></td>
+            <td><strong>${formatText(b.count)}</strong></td>
             <td>${b.extrapolated_vehicles_per_hour !== null && b.extrapolated_vehicles_per_hour !== undefined ? b.extrapolated_vehicles_per_hour : badgeHtml("unavailable")}</td>
           </tr>
         `).join("");
@@ -199,13 +269,13 @@ async function loadRunDetails(runId) {
 
     // Update Review Status
     const rev = summary.review_status || {};
-    document.getElementById("rev-total").textContent = rev.total_reviews !== undefined ? rev.total_reviews : "0";
-    document.getElementById("rev-approved").textContent = rev.approved_count !== undefined ? rev.approved_count : "0";
-    document.getElementById("rev-pending").textContent = rev.pending_count !== undefined ? rev.pending_count : "0";
-    document.getElementById("rev-rejected").textContent = rev.rejected_count !== undefined ? rev.rejected_count : "0";
-    document.getElementById("rev-class-corr").textContent = rev.class_corrected_count !== undefined ? rev.class_corrected_count : "0";
-    document.getElementById("rev-bbox-corr").textContent = rev.bbox_corrected_count !== undefined ? rev.bbox_corrected_count : "0";
-    document.getElementById("rev-snippets").textContent = rev.snippet_count !== undefined ? rev.snippet_count : "0";
+    document.getElementById("rev-total").textContent = formatText(rev.total_reviews);
+    document.getElementById("rev-approved").textContent = formatText(rev.approved_count);
+    document.getElementById("rev-pending").textContent = formatText(rev.pending_count);
+    document.getElementById("rev-rejected").textContent = formatText(rev.rejected_count);
+    document.getElementById("rev-class-corr").textContent = formatText(rev.class_corrected_count);
+    document.getElementById("rev-bbox-corr").textContent = formatText(rev.bbox_corrected_count);
+    document.getElementById("rev-snippets").textContent = formatText(rev.snippet_count);
 
     // Update Ground-Truth Comparison
     const gtRes = await fetch(`/api/runs/${encodeURIComponent(runId)}/ground-truth`);
@@ -228,11 +298,11 @@ async function loadRunDetails(runId) {
               <td>${r.approach || "All"}</td>
               <td>${r.movement || "All"}</td>
               <td>${r.vehicle_class || "All"}</td>
-              <td>${r.counted_count}</td>
-              <td>${r.observed_count}</td>
-              <td>${r.absolute_error}</td>
-              <td>${r.percentage_error !== null ? r.percentage_error.toFixed(1) + "%" : "N/A"}</td>
-              <td>${gtData.report.error_tolerance_pct}%</td>
+              <td>${formatText(r.counted_count)}</td>
+              <td>${formatText(r.observed_count)}</td>
+              <td>${formatText(r.absolute_error)}</td>
+              <td>${r.percentage_error !== null && r.percentage_error !== undefined ? r.percentage_error.toFixed(1) + "%" : "Unavailable"}</td>
+              <td>${gtData.report.error_tolerance_pct !== null && gtData.report.error_tolerance_pct !== undefined ? gtData.report.error_tolerance_pct + "%" : "Unavailable"}</td>
             </tr>
           `).join("");
         }
