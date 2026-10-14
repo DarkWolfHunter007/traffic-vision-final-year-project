@@ -1,0 +1,776 @@
+{
+  "_START_HERE": "You are continuing the Pattom signal-timing and low-emission intersection project. Step 1: read AI_RULES.md, then HANDOFF.md (sections 2 and 18) and handoff_addendum_2026-10-14.md, then PRD.md (section 8.1 is the source register: input values come only from there or from the footage), ARCHITECTURE.md, PLAN.md, IRC_SP41_extract.md, EMISSION_SOURCES.md and this file. Step 2: continue the first task in review_order whose status is IN_PROGRESS and which is not marked ongoing; if none, take the first task whose status is PENDING, whose T dependencies are all DONE and whose O dependencies are all DECIDED. Ids starting with T are tasks (see the 'tasks' section). Ids starting with O are open decisions (see 'open_decisions'). Step 3: do the task, produce the output named in 'output', then check it against 'done_when'. Step 4: set the status, fill 'evidence' with what was produced (file, table, or number with its source), add a line to the task's history and to _meta.history. Step 5: never mark DONE without evidence. Status rule: BLOCKED means the task waits on an open decision that is not yet DECIDED. A task waiting only on other tasks stays PENDING. When an open decision becomes DECIDED, set the tasks that waited only on it back to PENDING. If a task needs an open decision, stop and ask the user instead of choosing. If the guide has not answered, the user may close an item as 'decided, guide pending' with a date; record that in the decision's guide_confirmed field and keep it visible.",
+  "_meta": {
+    "project": "Optimization of Traffic Management Strategies for Vehicular Emission Reduction at Urban Intersections (Pattom, Thiruvananthapuram)",
+    "last_updated": "2026-10-14",
+    "owner": "Allen MT Maliyil (on site alone)",
+    "guide": "Dr. Reshmy D. S.",
+    "status_values": ["PENDING", "IN_PROGRESS", "BLOCKED", "DONE"],
+    "working_rules": ["AI_RULES.md applies at all times. HANDOFF.md section 2 (hard constraints) always applies.", "Never invent traffic counts, emission factors, capacity values, CI weights, MCE scores, signal timings or SUMO results. Every number needs a source, a measurement or a stated assumption.", "Label every value as measured, derived or estimated. Keep these separate in all tables.", "Do not write code unless the user asks for it in that session (user instruction, 14 Oct 2026: planning phase). Do not write files during a discussion unless asked; after a planning discussion, ask once whether to update the ledger.", "Only the MCE-selected alternative is simulated in SUMO, together with the existing case.", "Alternatives are developed before the MCE. SUMO results are not used to score the MCE.", "The redesign scope is signal timing: existing fixed timing compared with dynamic (traffic-responsive) timing. No widening, new lanes or reconstruction.", "Do not claim dynamic timing reduces emissions before the data show it. It is a hypothesis.", "A task is DONE only when its done_when condition is met and evidence is recorded.", "Resetting a task to PENDING never deletes history.", "Status rule: BLOCKED only while a dependency O id is not DECIDED. Otherwise PENDING.", "Input values come only from the footage or the source register (PRD section 8.1, D15). A value the register lacks is a gap: report it, propose sources, and let the user decide. Do not fill it from memory or another source."],
+    "reset_rules": {
+      "trigger_phrases": ["reset task", "reset from", "reset all"],
+      "steps": ["1. Confirm scope with the user first (single task, from a task onward, or all).", "2. Set the status of the tasks in scope back to PENDING.", "3. Keep evidence and history. Move old evidence into notes if it no longer applies.", "4. Say which tasks were reset and what the next PENDING task is."]
+    },
+    "versioning": {
+      "format": "vX.Y.Z",
+      "meaning": {
+        "X": "Scope or method change (for example alternatives, MCE criteria, SUMO scope).",
+        "Y": "Tasks added, removed or re-ordered.",
+        "Z": "Status updates, evidence, wording."
+      },
+      "current_version": "v0.5.0"
+    },
+    "history": {
+      "v0.1.0": "2026-10-14: Ledger created from HANDOFF.md, the 14 Oct addendum, the consistency-fix list and the planning conversation.",
+      "v0.2.0": "2026-10-14: Decisions D8-D13 added. Open decisions restructured with status; O1, O2, O8 decided, O3, O4, O6 partly decided, O13 added. T45 (local review screen) added before T15 and T15 now depends on it. T21 no longer waits on O6 (delay settled). T24 no longer depends on O5 (it proposes the answer) and T25 now does. T24, T41, T42, T44 set IN_PROGRESS. T28 now depends on O13. T38 scope widened. Documents block added.",
+      "v0.3.0": "2026-10-14: Applied the Opus 5.5 review. Key 'files' renamed 'tasks'. Added T46 (operational definitions before recording), T47 (propose the congestion-index formula), T48 (pixel-to-ground mapping and drift check). Split the circular definition tasks: T46 and T47 propose, T20/T21/T23 compute. T28 and T29 no longer wait on O13; T30 does. T05 no longer waits on O11 (now waits on O15). T16 waits on T15, T05, T06. T17 waits on T18 (not T19). T19 waits on the slot recordings. T25, T20, T22 gained dependencies. D2 reworded as a dated user override; D4 guide_confirmed set to false; D10 narrowed. Open decisions O14-O16 added; O6 and O13 widened. Statuses reset to the BLOCKED/PENDING rule. Ongoing flag added to T44. Per-task history added. Fixes-file id map added.",
+      "v0.4.0": "2026-10-14: IRC SP 41 (1994, supplied by the guide) recorded: D11 updated, D14 added, O3 narrowed to the PCU-table choice, notes added to T12, T22, T27, T28, T38. Emission research recorded: interim CO2-first method proposed (not a decision), T24 and T25 notes and evidence updated, O12 note added, T07 note added. T49 added (user obtains the priority papers and the ARAI Annexure IV). New documents: IRC_SP41_extract.md and EMISSION_SOURCES.md. PRD moved to v0.3.",
+      "v0.5.0": "2026-10-14: Source register added (D15): input values come only from the footage or the registered sources (IRC SP 41, the emission sources). D13 updated: CO2-first working plan adopted by the user (guide pending); O5 closed; O17 (phase 2 pollutants) and O18 (how SUMO emissions are computed) added. T50 added (check 'reported' values against the papers); T40 waits on it. Gap recorded on T28 (no delay formula in SP 41). T36 waits on O18. Documents moved to PRD v0.4, ARCHITECTURE v0.3, PLAN v0.3, AI_RULES v0.3."
+    },
+    "review_order": ["T44", "T38", "T41", "T42", "T43", "T24", "T49", "T50", "T01", "T02", "T46", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T48", "T11", "T12", "T13", "T14", "T45", "T15", "T16", "T18", "T17", "T19", "T20", "T21", "T22", "T47", "T23", "T25", "T26", "T27", "T28", "T29", "T30", "T31", "T32", "T33", "T36", "T34", "T35", "T37", "T39", "T40"],
+    "documents": {
+      "AI_RULES.md": "Rules for any AI agent on this project (v0.3)",
+      "PRD.md": "What the project must do and why (v0.4); section 8.1 is the source register",
+      "ARCHITECTURE.md": "How the pipeline fits together (v0.3)",
+      "PLAN.md": "Phases, gates and order of work (v0.3)",
+      "tasks.json": "This ledger",
+      "HANDOFF.md": "Original continuity brief; sections 2 and 18 still apply",
+      "handoff_addendum_2026-10-14.md": "Camera, recording, preprocessing, YOLO plan",
+      "report_ppt_consistency_fixes.md": "Fix list for the report and PPT",
+      "IRC_SP41_extract.md": "Verified extract of IRC SP 41 (1994): signal capacity, PCU tables, warrants, cautions",
+      "EMISSION_SOURCES.md": "Emission and ambient pollution sources, interim CO2-first method, papers to obtain (values mostly 'reported', not yet checked)"
+    },
+    "fixes_file_id_map": {
+      "note": "report_ppt_consistency_fixes.md numbers its decisions D1-D6 differently from this ledger. Use this map when applying it in T39.",
+      "fixes D1 (SUMO scope)": "ledger D1",
+      "fixes D2 (type of alternatives)": "ledger D2, which is narrower (signal timing only) by the user's instruction of 14 Oct 2026. Where the fixes file lists lane-use, free-left handling, pedestrian phase, bus-stop or parking management and kerb changes, those are not the current scope.",
+      "fixes D3 (MCE criteria)": "ledger D3",
+      "fixes D4 (order)": "ledger D4",
+      "fixes D5 (MCE does not use SUMO)": "working rule and PRD FR-18; not a numbered ledger decision",
+      "fixes D6 (emission methods separate)": "ledger D7"
+    }
+  },
+  "decisions": {
+    "D1": {
+      "text": "SUMO simulates the existing Pattom case and the single MCE-selected alternative only.",
+      "source": "HANDOFF.md; user confirmed 14 Oct 2026",
+      "guide_confirmed": false
+    },
+    "D2": {
+      "text": "The redesign scope is signal timing and phasing: the existing fixed timing is compared with re-optimised and traffic-responsive alternatives, within the existing geometry. If the data show problems that timing cannot address, report them as findings and future work.",
+      "source": "User, 14 Oct 2026. This narrows HANDOFF.md sections 3.2 and 10 (which also list lane-use and turning management) and the D2 of report_ppt_consistency_fixes.md.",
+      "guide_confirmed": false
+    },
+    "D3": {
+      "text": "MCE uses the five PPT criteria: congestion reduction, emission reduction, safety improvement, construction cost, land requirement.",
+      "source": "PPT slide 12; HANDOFF.md section 11",
+      "guide_confirmed": false
+    },
+    "D4": {
+      "text": "Order: problems identified, alternatives developed, MCE, best alternative selected, SUMO.",
+      "source": "HANDOFF.md section 4 and section 19 (listed as agreed). No record of the guide confirming it; PPT slide 12 still shows the MCE before the alternatives. Add to T38.",
+      "guide_confirmed": false
+    },
+    "D5": {
+      "text": "Camera: iPhone 15, 0.5x ultra-wide, Lens Correction ON, 4K 30 fps, Action Mode off, fixed clamped and tethered position. Top-left of the frame is North.",
+      "source": "User, 14 Oct 2026",
+      "guide_confirmed": false
+    },
+    "D6": {
+      "text": "Two recording slots of about 1.5 hours each: off-peak and peak. The evening outflow (from about 4:15 pm) is the main peak. Video is the ground truth; validation is by manual counting of playback clips.",
+      "source": "User, 14 Oct 2026",
+      "guide_confirmed": false
+    },
+    "D7": {
+      "text": "Baseline emissions come from video activity times emission factors. SUMO emission output is used only to compare existing versus selected alternative and is labelled separately.",
+      "source": "HANDOFF.md section 12.4",
+      "guide_confirmed": false
+    },
+    "D8": {
+      "text": "Congestion and emission reduction are scored before SUMO with an analytical estimate from observed flows. The exact method is still to be defined and approved.",
+      "source": "User, 14 Oct 2026",
+      "guide_confirmed": false
+    },
+    "D9": {
+      "text": "The congestion index is kept. The formula is open and must be approved by the guide.",
+      "source": "User, 14 Oct 2026",
+      "guide_confirmed": false
+    },
+    "D10": {
+      "text": "Delay means stopped delay. The stopped-speed threshold and the queue-length definition are still open (O6).",
+      "source": "User, 14 Oct 2026",
+      "guide_confirmed": false
+    },
+    "D11": {
+      "text": "Capacity comes from IRC SP 41 (1994), supplied by the guide. Signalised approach capacity uses section 7.6: capacity = g x s / c, with s = 525 w PCU/h for approach widths of 5.5 to 18 m. The PCU table (Table 3.1 or Table III-1) is still to be chosen.",
+      "source": "User, 14 Oct 2026; IRC SP 41 book pages 15, 75-78, 114 (checked against the page images; see IRC_SP41_extract.md)",
+      "guide_confirmed": false
+    },
+    "D12": {
+      "text": "The west approach is handled after the test clip.",
+      "source": "User, 14 Oct 2026",
+      "guide_confirmed": false
+    },
+    "D13": {
+      "text": "Emission-factor sources are researched by the AI and registered only after the user approves. Working plan (user, 14 Oct 2026): phase 1 estimates CO2 as idle time x idle fuel rate x fuel carbon factor, plus ARAI g/km for moving vehicles; CO, HC, NOx and PM are added when their sources are registered (O17). See EMISSION_SOURCES.md.",
+      "source": "User, 14 Oct 2026",
+      "guide_confirmed": false
+    },
+    "D14": {
+      "text": "IRC SP 41 (1994) is the intersection code supplied by the guide. Cite it for signal warrants, PCU factors, signalised capacity and cycle design. Its geometric-design chapters stay outside the D2 scope.",
+      "source": "User, 14 Oct 2026 (the guide gave the file). Her view on the timing-only scope (D2) is still unconfirmed.",
+      "guide_confirmed": false
+    },
+    "D15": {
+      "text": "Source data policy: input values come only from the footage or the source register in PRD section 8.1 (IRC SP 41, the emission sources in EMISSION_SOURCES.md). A value the register lacks is reported as a gap and not filled from another source. The user decides whether to add a source.",
+      "source": "User, 14 Oct 2026 ('these data will be used rather than any other source data')",
+      "guide_confirmed": false
+    }
+  },
+  "open_decisions": {
+    "_note": "status: OPEN, PARTIAL (part decided, part open) or DECIDED. A task waiting on an O id is unblocked only when that id is DECIDED.",
+    "O1": {
+      "status": "DECIDED",
+      "text": "How congestion-reduction and emission-reduction scores are estimated before SUMO.",
+      "resolution": "Analytical estimate from observed flows (D8). The exact method is defined in T28 and O13."
+    },
+    "O2": {
+      "status": "DECIDED",
+      "text": "Keep or change the five MCE criteria, given that every alternative is a timing change.",
+      "resolution": "Keep all five (D3). State in the report that land requirement is equal for all alternatives and cost differs only by hardware. Guide confirmation pending."
+    },
+    "O3": {
+      "status": "PARTIAL",
+      "text": "Capacity method and PCU set for V/C.",
+      "resolution": "Capacity method decided: SP 41 section 7.6 (D11). Open: which PCU table (Table 3.1, book p. 15, or Table III-1, p. 114; they differ for tractor-trailers) and whether to compare with a saturation flow measured from the footage."
+    },
+    "O4": {
+      "status": "PARTIAL",
+      "text": "Congestion index: indicators, normalisation, weights, interpretation scale.",
+      "resolution": "Index kept (D9). Formula open and not to be invented."
+    },
+    "O5": {
+      "status": "DECIDED",
+      "text": "Emission-factor source, pollutants, categories, units, and handling of unknown fuel, age and emission standard. The method must include idle time or speed and acceleration.",
+      "resolution": "Decided by the user on 14 Oct 2026 as the working plan in D13 (CO2 first from idle time; guide pending). The remaining pollutants moved to O17."
+    },
+    "O6": {
+      "status": "PARTIAL",
+      "text": "Operational definition of queue length, and the stopped-speed threshold used for stopped delay.",
+      "resolution": "Delay is settled as stopped delay (D10). Queue definition and stopped-speed threshold are written in T46 and approved by the user."
+    },
+    "O7": {
+      "status": "OPEN",
+      "text": "Final YOLO version, tracker, class list, and whether tiling is needed.",
+      "resolution": "Decide after the test clip (T11)."
+    },
+    "O8": {
+      "status": "DECIDED",
+      "text": "Which peak is the main peak.",
+      "resolution": "Evening outflow from about 4:15 pm (D6). The morning rush from about 8:30 is noted."
+    },
+    "O9": {
+      "status": "OPEN",
+      "text": "Whether free-left movements exist on North, South and East as the user described.",
+      "resolution": "Check on the footage (T18)."
+    },
+    "O10": {
+      "status": "OPEN",
+      "text": "How the west approach is handled (partly visible, tree blocks one corner): measured partial view, derived, or excluded from queue and delay.",
+      "resolution": "Deferred until after the test clip (D12)."
+    },
+    "O11": {
+      "status": "OPEN",
+      "text": "Submission and review deadlines (not yet given).",
+      "resolution": "Not given yet. Fills PLAN.md section 9. Blocks no task."
+    },
+    "O12": {
+      "status": "OPEN",
+      "text": "Whether pollution-board data is used (context only, not calibration) and which station.",
+      "resolution": "Candidate: Plammoodu continuous station (Kerala PCB), about 0.4-0.5 km from Pattom by third-party coordinates; check the hourly data exist for the recording days. Context only, never calibration."
+    },
+    "O13": {
+      "status": "OPEN",
+      "text": "MCE weights, scoring scale, how safety and cost are scored, and the exact pre-SUMO scoring method (including how a criterion that is equal for all alternatives, such as land requirement, is scored).",
+      "resolution": "Closed when the guide approves the outputs of T28 and T29. T30 waits on it."
+    },
+    "O14": {
+      "status": "OPEN",
+      "text": "SUMO calibration tolerance: how close simulated flow, queue and delay must be to the observations.",
+      "resolution": "To be agreed with the guide."
+    },
+    "O15": {
+      "status": "OPEN",
+      "text": "Off-peak slot: time of day and date.",
+      "resolution": ""
+    },
+    "O16": {
+      "status": "OPEN",
+      "text": "Privacy handling for the video: blurring, number plates, who may see frames.",
+      "resolution": "Blocks no task. Ask before sharing frames outside the user's own computer."
+    },
+    "O17": {
+      "status": "OPEN",
+      "text": "Phase 2 emissions: sources for CO, HC, NOx and PM at idle and by speed.",
+      "resolution": "Waits on the papers (T49) and the ARAI Annexure IV. Until then the report states these pollutants are not covered."
+    },
+    "O18": {
+      "status": "OPEN",
+      "text": "How SUMO-case emissions are computed: the registered factors applied to SUMO stop time and distance per vehicle type (proposed), or SUMO's built-in model (European-based, not in the register).",
+      "resolution": "Proposal: use the registered factors so both the video baseline and the SUMO cases rest on the same sources; show the built-in model only as a labelled cross-check."
+    }
+  },
+  "tasks": {
+    "T01": {
+      "title": "Choose the final camera angle",
+      "phase": "P1 Site and data",
+      "depends_on": [],
+      "output": "Chosen frame showing all four arms, with the tree-blocked west corner noted",
+      "done_when": "User confirms the angle as final",
+      "status": "DONE",
+      "evidence": "User confirmed the last frame as the final angle on 14 Oct 2026",
+      "notes": "Camera sits near a drop edge: clamp and tether. The frame file is not named in the ledger: add its file name when the user supplies it.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T02": {
+      "title": "Record a 3-minute 4K test clip from the final spot, including at least one full signal cycle",
+      "phase": "P1 Site and data",
+      "depends_on": ["T01"],
+      "output": "test_clip file, original untouched",
+      "done_when": "Clip plays, shows the approaches as visible (the west is partly hidden, see D12), and includes at least one full signal cycle on every visible approach",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Same lens, zoom and Lens Correction setting as the real recording.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T03": {
+      "title": "Record a checkerboard calibration clip with identical camera settings",
+      "phase": "P1 Site and data",
+      "depends_on": ["T01"],
+      "output": "calibration clip with 20-30 usable frames at varied positions and tilts",
+      "done_when": "Board corners are detectable in at least 20 frames",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Must match resolution, lens, zoom and Lens Correction of the Pattom recordings.",
+      "history": []
+    },
+    "T04": {
+      "title": "Measure zebra-crossing stripe widths and lengths and pick ground control points on site",
+      "phase": "P1 Site and data",
+      "depends_on": ["T01"],
+      "output": "Sheet of measured distances with the stripes or points identified on a frame",
+      "done_when": "At least four known ground points per visible approach",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Used for the pixel-to-metre mapping for queue length.",
+      "history": []
+    },
+    "T05": {
+      "title": "Record the off-peak slot (about 1.5 hours)",
+      "phase": "P1 Site and data",
+      "depends_on": ["T02", "T03", "T04", "T46", "O15"],
+      "output": "Video files of 10-15 minutes each, plus a slot log (start time, weather, unusual events)",
+      "done_when": "About 1.5 hours recorded with no gaps larger than the file change",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "Blocked until the test clip shows the setup works. Storage about 16 GB; clear about 40 GB on the phone. Power bank, shade, Do Not Disturb.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T06": {
+      "title": "Record the peak slot (about 1.5 hours)",
+      "phase": "P1 Site and data",
+      "depends_on": ["T02", "T03", "T04", "T46", "O8"],
+      "output": "Video files of 10-15 minutes each, plus a slot log",
+      "done_when": "About 1.5 hours recorded with no gaps larger than the file change",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Main peak is the evening outflow from about 4:15 pm (D6). Morning congestion starts about 8:30 (user observation).",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T07": {
+      "title": "Optional: collect pollution-board readings for the same slots as context",
+      "phase": "P1 Site and data",
+      "depends_on": ["O12"],
+      "output": "Table of station readings with station name, distance from Pattom, pollutants and averaging interval",
+      "done_when": "Readings recorded for both slots, or the task is dropped by the user",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "Ambient concentration is not vehicle emission. It can only show whether higher traffic coincides with higher ambient levels. It cannot calibrate the video or the emission estimates. Candidate station: Plammoodu (Kerala PCB, continuous), then Kariavattom (about 8 km). See EMISSION_SOURCES.md section 4. Check distances in GIS and download availability from the CPCB portal.",
+      "history": ["v0.4.0 2026-10-14: notes or evidence updated for IRC SP 41 and the emission research run"]
+    },
+    "T08": {
+      "title": "Back up originals and convert to constant frame rate",
+      "phase": "P2 Preprocessing",
+      "depends_on": ["T02"],
+      "output": "Backed-up originals and constant-frame-rate copies",
+      "done_when": "Copies play with steady 30 fps timing and originals are unchanged",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "iPhone video can have variable frame rate, which breaks delay timing. Budget about 3-4 times the raw size on the PC. Repeat this step on every slot recording; T16 needs the converted copies.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T09": {
+      "title": "Calibrate the lens and verify the correction",
+      "phase": "P2 Preprocessing",
+      "depends_on": ["T03", "T08"],
+      "output": "Camera matrix and distortion coefficients; check of one zebra stripe width at frame centre versus edge",
+      "done_when": "Centre and edge measurements agree closely, or a per-approach mapping is chosen instead",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "If the edge error stays large, build a separate mapping per approach from its own crossing.",
+      "history": []
+    },
+    "T10": {
+      "title": "Undistort the videos",
+      "phase": "P2 Preprocessing",
+      "depends_on": ["T09"],
+      "output": "Undistorted constant-frame-rate videos",
+      "done_when": "Zebra edges and kerbs look straight in sample frames",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Do this before detection, tracking and tiling. Repeat on every slot recording. Labels in T13 must come from the same kind of frame the detector will run on.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T11": {
+      "title": "Test pretrained YOLO and a tracker on the test clip",
+      "phase": "P3 YOLO",
+      "depends_on": ["T02", "T10"],
+      "output": "Short findings note: far-arm detection, class mix-ups (autos), behind-cable drops, west corner, ID switches",
+      "done_when": "Findings recorded, free-left presence noted, and O7, O9 and O10 put to the user for decision",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Pretrained COCO models have no auto-rickshaw class. Expect autos to be mislabelled.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T12": {
+      "title": "Define the class list and labelling rules",
+      "phase": "P3 YOLO",
+      "depends_on": ["T11", "O7"],
+      "output": "Class list (proposed: two-wheeler, auto, car, bus, truck) and written labelling rules for edge cases",
+      "done_when": "Rules cover occlusion, partial vehicles at the frame edge and parked vehicles",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "Add pedestrians only if needed. IRC SP 41 PCU tables have a light-commercial class (1.50) that our proposed class list lacks; decide whether to add it.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review", "v0.4.0 2026-10-14: notes or evidence updated for IRC SP 41 and the emission research run"]
+    },
+    "T13": {
+      "title": "Extract frames, pre-label, and correct labels",
+      "phase": "P3 YOLO",
+      "depends_on": ["T12", "T05", "T06"],
+      "output": "300-500 corrected labelled frames from both slots and all arms, spaced a few seconds apart",
+      "done_when": "Labels corrected in the labelling tool and train and validation sets split by time block, not randomly",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Blocked on the recordings. A first small set from the test clip can start earlier. Label frames of the same kind the detector will run on (undistorted copies).",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T14": {
+      "title": "Fine-tune the model on Colab and evaluate on the held-out set",
+      "phase": "P3 YOLO",
+      "depends_on": ["T13"],
+      "output": "Trained weights and per-class results on the validation set",
+      "done_when": "Per-class results recorded, including the auto class and the far arm",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Local GPU has 4 GB VRAM: use it for inference, not training.",
+      "history": []
+    },
+    "T15": {
+      "title": "Run the low-confidence review loop",
+      "phase": "P3 YOLO",
+      "depends_on": ["T14", "T45"],
+      "output": "Flagged full frames (low confidence, class flips, vanishing tracks, hard zones) with pre-labels, corrected and added to training",
+      "done_when": "At least one review round completed and results compared with the previous model",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Confidence is not accuracy: also review a random sample, not only flagged frames. Label full frames, not crops. Keep the validation set untouched.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T16": {
+      "title": "Run detection and tracking over both slots",
+      "phase": "P3 YOLO",
+      "depends_on": ["T14", "T15", "T05", "T06"],
+      "output": "Track table (frame, time, ID, class, confidence, box) for each slot",
+      "done_when": "Both slots converted and undistorted (T08, T10 methods) and processed with the model from the last review round; model name, tracker, thresholds, frame rate and resolution recorded",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Tile only where needed (far arm) plus a full-frame pass for large vehicles. Merge detections before tracking. Run the heavy pass overnight.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T17": {
+      "title": "Validate automated counts against manual counts of sampled playback clips",
+      "phase": "P3 YOLO",
+      "depends_on": ["T16", "T18", "O10"],
+      "output": "Error table per approach and class, reported honestly",
+      "done_when": "Counting error is known for each approach, including the partly visible west",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "No second person on site, so manual counting is done from the video.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T18": {
+      "title": "Define counting lines and movements",
+      "phase": "P4 Traffic parameters",
+      "depends_on": ["T11", "O9", "O10"],
+      "output": "Counting line and movement definitions per approach, with free-left movements separate",
+      "done_when": "Every line sits where vehicles are fully visible and the counting rule is written down",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "Check O9 (free lefts) and O10 (west handling) on the footage. Avoid zones where vehicles are cut off at the frame edge or hidden by cables (check on the test clip). Add arrival lines upstream of the longest queue where visible, as defined in T46; counts at the stop line alone measure discharge, not demand.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T19": {
+      "title": "Read the signal phases and cycle from the footage",
+      "phase": "P4 Traffic parameters",
+      "depends_on": ["T02", "T05", "T06", "T08"],
+      "output": "Table of green, amber and red start times per signal head over about 10 minutes, and the resulting phase groups",
+      "done_when": "Number of phases and cycle length are established from footage",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "User estimate, not verified: N-S green about 50 s, E-W green about 20-30 s. A first provisional read from the test clip is allowed, but the final table covers about 10 minutes of each slot because plans may differ by time of day. Cross-check with the vehicle-start method, ignoring free-left vehicles.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T20": {
+      "title": "Compute queue length",
+      "phase": "P4 Traffic parameters",
+      "depends_on": ["T04", "T10", "T16", "T19", "T46", "T48", "O6"],
+      "output": "Queue length in metres per approach and cycle, using the definition from T46",
+      "done_when": "Values computed with the ground-point mapping from T48, with far-arm accuracy limits stated",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "Queue definition is open (O6). Never report metres from raw pixels.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T21": {
+      "title": "Compute stopped delay",
+      "phase": "P4 Traffic parameters",
+      "depends_on": ["T16", "T19", "T46", "O6"],
+      "output": "Average stopped delay per approach and slot, using the definition and threshold from T46",
+      "done_when": "Values computed with the method from T46 stated",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "If the camera does not cover the full relevant path, adjust the method and say so.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T22": {
+      "title": "Choose the capacity method and compute V/C",
+      "phase": "P4 Traffic parameters",
+      "depends_on": ["T16", "T18", "T19", "O3"],
+      "output": "Capacity per approach with method, PCU set and inputs documented, and V/C",
+      "done_when": "Every capacity input is sourced or measured",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "Method: IRC SP 41 (1994) section 7.6, capacity = g x s / c, s = 525 w PCU/h (5.5 to 18 m), table for narrower approaches, gradient and right-turn corrections (D11). g and c come from T19. Choose the PCU table (O3): Table 3.1 or Table III-1. Optionally measure saturation flow from queue discharge in the footage and compare with 525 w. See IRC_SP41_extract.md. Do not use the 1,400-2,400 PCU/h approach-road values as saturation flow.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review", "v0.4.0 2026-10-14: notes or evidence updated for IRC SP 41 and the emission research run"]
+    },
+    "T23": {
+      "title": "Compute the congestion index",
+      "phase": "P4 Traffic parameters",
+      "depends_on": ["T20", "T21", "T22", "T47", "O4"],
+      "output": "Index values per approach and slot, using the approved formula",
+      "done_when": "The approved formula is applied identically to every approach and period",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "Avoid double-counting closely related indicators.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T24": {
+      "title": "Choose the emission-factor source and method",
+      "phase": "P5 Emissions",
+      "depends_on": [],
+      "output": "Named source, pollutant list, vehicle categories, units and handling of unknown fleet details",
+      "done_when": "Source cited and unit consistency checked against the activity basis",
+      "status": "IN_PROGRESS",
+      "evidence": "Sources read so far: India GHG Program road-transport technical paper (CO2 only, per km); IISc ENVIS table from ARAI 2007, read from the user's screenshot (CO2, CH4, N2O per km, no three-wheeler row, values not independently verified). Not yet read: IIASA India road-emissions work and an Emerald paper on MOVES idling (web fetch blocked by bot protection, so the user is to open and upload the PDFs); a Delhi idling study; Napier page redirected to a holding page. No source found so far covers CO, NOx and PM with an idle- or speed-based method. Research run 14 Oct 2026 (EMISSION_SOURCES.md): ARAI 2007 Table I gives g/km for CO, HC, NOx, CO2, PM by class; idle g/min exists only in ARAI Annexure IV (not public); CSIR-CRRI idle fuel rates exist (motorcycle 0.14, three-wheeler 0.24, car 0.6, bus 0.9 L/h, reported); IVE is a free VSP-bin model applied in Pune and Chennai. No open Indian idle CO/HC/NOx/PM rates or three-wheeler NOx/PM by speed were found. One citation checked by hand (Sharma et al. 2019, J. Cleaner Production 212:8-21); the rest are as reported.",
+      "notes": "The AI researches and proposes; the user and guide confirm, which closes O5 (D13). The method must respond to signal timing. YOLO cannot identify fuel type, model year or emission standard; state this assumption. Also look for a source with g/km factors for CO, NOx and PM by vehicle type, including three-wheelers (the primary ARAI report behind the ENVIS table may have them; not verified). A per-km, driving-cycle source does not respond to timing on its own; a speed or idle based method is needed on top. Interim proposal: CO2-first (idle time x idle fuel rate x fuel carbon factor, plus ARAI g/km for moving vehicles), then add CO, HC, NOx, PM when the papers are obtained (T49). Fuel type is assumed per class because video cannot tell it. Sources are registered per D15 (EMISSION_SOURCES.md section 2); each is marked verified or reported.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review", "v0.4.0 2026-10-14: notes or evidence updated for IRC SP 41 and the emission research run", "v0.5.0 2026-10-14: updated for the source register (D15) and the working plan (D13)"]
+    },
+    "T25": {
+      "title": "Compute baseline emissions per approach and slot",
+      "phase": "P5 Emissions",
+      "depends_on": ["T16", "T18", "T21", "T24", "O5"],
+      "output": "Emission estimates with equation, symbols, units, time period and spatial boundary",
+      "done_when": "Results labelled as estimates and the method is reproducible",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "This is an estimate, not a direct measurement. Phase 1 is CO2 only (working plan, D13). Label which pollutants are covered and which are not (CO, HC, NOx, PM wait on O17). Use registered sources only (D15). Values marked 'reported' are labelled 'source not checked' until T50.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review", "v0.4.0 2026-10-14: notes or evidence updated for IRC SP 41 and the emission research run", "v0.5.0 2026-10-14: updated for the source register (D15) and the working plan (D13)"]
+    },
+    "T26": {
+      "title": "Congestion-emission analysis and problem identification",
+      "phase": "P5 Emissions",
+      "depends_on": ["T23", "T25"],
+      "output": "Table by approach and slot, and a list of observed problems",
+      "done_when": "Problems are taken from the data, not assumed",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "High congestion does not automatically mean the highest emissions. Report what the data show, including any problem that timing cannot address (record it as a finding and future work).",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T27": {
+      "title": "Develop several signal-timing alternatives",
+      "phase": "P6 Alternatives and MCE",
+      "depends_on": ["T26", "T19"],
+      "output": "At least two alternatives besides the existing fixed plan (for example a re-optimised fixed plan per time of day, vehicle-actuated, adaptive), each documented",
+      "done_when": "Each alternative lists the problem it addresses, the change, expected effect, safety, cost, land requirement and feasibility",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "The listed examples are candidates, not decisions. Do not pick the winner in advance. SUMO has static, actuated (gap-based), delay-based and NEMA signal control built in; a true adaptive scheme needs external control (TraCI), which is a coding task, so include an adaptive alternative only if the user agrees. Keep at least two alternatives besides the existing plan. SP 41 section 7.4.4 suggests a separate right-turn phase when there are many right turners from both approaches; a candidate if the footage shows heavy right turns.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review", "v0.4.0 2026-10-14: notes or evidence updated for IRC SP 41 and the emission research run"]
+    },
+    "T28": {
+      "title": "Define how congestion and emission reduction are scored before SUMO",
+      "phase": "P6 Alternatives and MCE",
+      "depends_on": ["T27", "O1"],
+      "output": "Written scoring method for the two reduction criteria",
+      "done_when": "Method approved by the guide (part of closing O13)",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Analytical estimate from observed flows (D8). SUMO results cannot be used here because only the winner is simulated afterwards. The method must be valid for each alternative type: a Webster-type delay formula assumes fixed-time, isolated and undersaturated (volume/capacity below 1) operation, so state what is used when volume/capacity reaches or exceeds 1 and how actuated or adaptive control is approximated. If the method cannot score an alternative, say so and either drop it or record the limit. IRC SP 41 sections 7.6.3 and 7.6.4 give the fixed-time cycle-time and green-split formulas (Co = (1.5 L + 5)/(1 - Y); g1/g2 = y1/y2), usable for a re-optimised fixed plan. They give no delay formula and nothing on actuated or adaptive control, so another source is needed. Do not quote the 120 s sentence (p. 78) or the right-turn formula (p. 77) before checking IRC 93; both look misprinted. GAP under D15: no registered source gives a delay formula for the pre-SUMO estimate. Before T28 closes, the user decides which source to add; candidates with citations are proposed in that session.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review", "v0.4.0 2026-10-14: notes or evidence updated for IRC SP 41 and the emission research run", "v0.5.0 2026-10-14: updated for the source register (D15) and the working plan (D13)"]
+    },
+    "T29": {
+      "title": "Define MCE scale, weights and sensitivity test",
+      "phase": "P6 Alternatives and MCE",
+      "depends_on": ["T28", "O2"],
+      "output": "Scoring scale, criterion direction, weights with justification, and a check of how the ranking changes when weights vary",
+      "done_when": "Method written down before scores are assigned",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Benefit criteria: higher is better. Cost and land: lower is better. A criterion that is equal for all alternatives (land requirement) gives no spread under min-max scaling: state how it is scored (for example a constant score, noted as non-discriminating). State how safety and cost are scored. Part of closing O13.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T30": {
+      "title": "Score the alternatives and select the best one",
+      "phase": "P6 Alternatives and MCE",
+      "depends_on": ["T29", "O13"],
+      "output": "MCE matrix and a written reason for the selection",
+      "done_when": "One alternative selected and the sensitivity result reported",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T31": {
+      "title": "Decide SUMO network detail and build the existing Pattom network",
+      "phase": "P7 SUMO",
+      "depends_on": ["T04", "T18", "T19", "O9"],
+      "output": "Network with approaches, lanes, allowed movements, free lefts and the observed signal program",
+      "done_when": "Network loads and the signal program matches the observed phases",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "Mixed, lane-less traffic is hard to model. Decide how two-wheelers are represented.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T32": {
+      "title": "Build demand from the YOLO counts",
+      "phase": "P7 SUMO",
+      "depends_on": ["T16", "T17", "T31"],
+      "output": "Flows per route and slot, vehicle-type mix, simulation duration and warm-up",
+      "done_when": "Demand traces back to counted values, with derived values labelled",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "West flow may be partly derived. Say so. Demand taken at stop-line counts is shaped by the existing signal; use the arrival counts from T18/T46 where available.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T33": {
+      "title": "Calibrate the existing SUMO model against the observations",
+      "phase": "P7 SUMO",
+      "depends_on": ["T20", "T21", "T32", "O14"],
+      "output": "Comparison of simulated and observed flow, queue and delay",
+      "done_when": "Agreement and remaining differences stated honestly",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "Calibrate on one slot and check on the other where the data allow. Compare like with like: observed stopped delay with the SUMO waiting measure (time at or below a stopped speed), not with time loss.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T34": {
+      "title": "Run the existing case for off-peak and peak demand",
+      "phase": "P7 SUMO",
+      "depends_on": ["T33", "T36"],
+      "output": "Simulation outputs for the existing case",
+      "done_when": "Outputs saved with the configuration and the list of random seeds used",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T35": {
+      "title": "Implement the selected alternative and run it under comparable demand",
+      "phase": "P7 SUMO",
+      "depends_on": ["T30", "T34"],
+      "output": "Simulation outputs for the selected alternative",
+      "done_when": "Demand, assumptions and the same random seeds match the existing case except for the intervention",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "If demand differs between runs, account for it. Do not credit every change to the redesign.",
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+    },
+    "T36": {
+      "title": "Choose and document the SUMO emission model",
+      "phase": "P7 SUMO",
+      "depends_on": ["T31", "O18"],
+      "output": "Chosen emission model, vehicle-class mapping and limitations",
+      "done_when": "Limitations written, including that built-in models are largely based on European vehicles",
+      "status": "BLOCKED",
+      "evidence": "",
+      "notes": "Treat results as an indicative comparison between the two scenarios. Do not mix them with the video-based estimate. Proposal (O18): apply the registered factors to SUMO's stop time and distance per vehicle type; SUMO's built-in model is a labelled cross-check, not a source (D15).",
+      "history": ["v0.5.0 2026-10-14: updated for the source register (D15) and the working plan (D13)"]
+    },
+    "T37": {
+      "title": "Compare existing and selected alternative",
+      "phase": "P7 SUMO",
+      "depends_on": ["T34", "T35", "T36"],
+      "output": "Comparison of delay, queue, throughput, travel time and emissions, with percentage changes",
+      "done_when": "Every change is backed by a simulation output and the limitations are stated",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Do not list traffic volume as an expected change. Include V/C only if both cases share a capacity basis.",
+      "history": []
+    },
+    "T38": {
+      "title": "Get guide confirmation of D1-D3 and the open decisions that need her",
+      "phase": "P0 Planning",
+      "depends_on": [],
+      "output": "Written or recorded guide responses on scope, the order (D4), MCE criteria, pre-SUMO scoring, congestion-index formula and emission method",
+      "done_when": "guide_confirmed set for D1-D4, D8, D9, D13 and D15, or closed as 'decided, guide pending' with a date by the user. The west approach (O10) is settled after the test clip, not before.",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Approvals may be slow. Record what is said and when. The guide supplied IRC SP 41 (1994) for the intersection work (user, 14 Oct 2026). Her view on the timing-only scope is still unconfirmed. D15 (source register) is also for her confirmation.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review", "v0.4.0 2026-10-14: notes or evidence updated for IRC SP 41 and the emission research run", "v0.5.0 2026-10-14: updated for the source register (D15) and the working plan (D13)"]
+    },
+    "T39": {
+      "title": "Apply the report and PPT consistency fixes",
+      "phase": "P8 Writing",
+      "depends_on": ["T38"],
+      "output": "Corrected report and PPT, following report_ppt_consistency_fixes.md",
+      "done_when": "Report and PPT agree on scope, MCE criteria and order, and drafting leftovers are removed",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "The fix list exists. Applying it waits for the guide decisions.",
+      "history": []
+    },
+    "T40": {
+      "title": "Write the final results chapters and recommendation",
+      "phase": "P8 Writing",
+      "depends_on": ["T37", "T39", "T50"],
+      "output": "Results, limitations and recommendation with no claim beyond the evidence",
+      "done_when": "Every number in the text traces to a task output",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "No reduction percentage before results exist.",
+      "history": ["v0.5.0 2026-10-14: updated for the source register (D15) and the working plan (D13)"]
+    },
+    "T41": {
+      "title": "Write the PRD",
+      "phase": "P0 Planning",
+      "depends_on": [],
+      "output": "PRD document",
+      "done_when": "PRD drafted and checked against HANDOFF.md and the other documents",
+      "status": "DONE",
+      "evidence": "PRD.md v0.1 written 14 Oct 2026, reviewed by Opus 5.5 (T43) and corrected.",
+      "notes": "Open decisions are listed in it, not filled with guesses.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T42": {
+      "title": "Write the Plan, AI rules and Architecture documents",
+      "phase": "P0 Planning",
+      "depends_on": ["T41"],
+      "output": "Three documents. The Tasks document is this file.",
+      "done_when": "Documents drafted and checked against HANDOFF.md and each other",
+      "status": "DONE",
+      "evidence": "ARCHITECTURE.md, PLAN.md and AI_RULES.md v0.1 written 14 Oct 2026, reviewed by Opus 5.5 (T43) and corrected.",
+      "notes": "AI rules should be taken from working_rules and HANDOFF.md section 2.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T43": {
+      "title": "Run an Opus-class review pass on the five documents",
+      "phase": "P0 Planning",
+      "depends_on": ["T41", "T42"],
+      "output": "Review notes: contradictions with HANDOFF.md, invented values, gaps",
+      "done_when": "Issues fixed or explicitly accepted by the user, and the user approves the five documents or lists changes",
+      "status": "IN_PROGRESS",
+      "evidence": "Review run 14 Oct 2026 by a reviewer that reported itself as Opus 5.5 (claude-opus-5-5) from its system configuration. Findings applied in v0.3.0. Awaiting the user's acceptance.",
+      "notes": "Report which model version the reviewer says it is.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T44": {
+      "title": "Keep HANDOFF.md and this ledger current",
+      "phase": "P0 Planning",
+      "depends_on": [],
+      "output": "Updated handoff and ledger after each major decision",
+      "done_when": "Ongoing: no decision exists only in chat",
+      "status": "IN_PROGRESS",
+      "evidence": "handoff_addendum_2026-10-14.md and report_ppt_consistency_fixes.md written on 14 Oct 2026. This ledger moved to v0.2.0 the same day.",
+      "notes": "",
+      "ongoing": true,
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T45": {
+      "title": "Build the local review screen",
+      "phase": "P3 YOLO",
+      "depends_on": ["T12"],
+      "output": "A local web app (proposed FastAPI with Uvicorn) that reads detector output files and shows flagged clips and full frames, takes label corrections, and writes two separate exports: labels for training and a review log",
+      "done_when": "The app runs on the user's PC, shows a flagged event with a short clip and the full frame, saves a corrected label, and the user confirms it works",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Design is in ARCHITECTURE.md section 5. Detection stays a separate batch job. Do not write code until the user says to start building (AI_RULES.md section 6). If the user drops the custom screen, replace it with an export to a labelling tool (CVAT or Label Studio) and update T15. An untested draft script, detect_track_review.py, exists in the uploads from before the no-code instruction; it has not been run and is not part of the plan.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review"]
+    },
+    "T46": {
+      "title": "Write the operational definitions before the full recordings",
+      "phase": "P1 Site and data",
+      "depends_on": ["T02"],
+      "output": "Written definitions: queue length (where it starts and ends and how it is measured), the stopped-speed threshold, treatment of free-left vehicles, counting lines and arrival lines per approach, and the capacity inputs needed from the IRC book",
+      "done_when": "The user approves the definitions and O6 is set to DECIDED",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Handoff addendum step 4: fix queue, delay and capacity definitions before the full recording. The definitions decide what the camera must cover. Where visible, arrival lines should sit upstream of the longest queue, because discharge counted at the stop line is capped by capacity when the junction is oversaturated and understates demand.",
+      "history": ["v0.3.0 2026-10-14: task added after the Opus 5.5 review"]
+    },
+    "T47": {
+      "title": "Propose the congestion-index formula",
+      "phase": "P4 Traffic parameters",
+      "depends_on": ["T46"],
+      "output": "Proposal with symbols: indicators, normalisation, weights, interpretation scale and the reason for each choice",
+      "done_when": "The guide approves the formula and O4 is set to DECIDED",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Avoid double-counting closely related indicators. Weights are not to be invented: justify each one or use a documented method.",
+      "history": ["v0.3.0 2026-10-14: task added; splits the proposal from the computation in T23"]
+    },
+    "T48": {
+      "title": "Compute the pixel-to-ground mapping and check it",
+      "phase": "P2 Preprocessing",
+      "depends_on": ["T04", "T10"],
+      "output": "Mapping per approach (or one shared mapping), the residual on at least one check distance that was not used to fit it, and a per-file check that the camera did not drift (fixed landmarks)",
+      "done_when": "The error in metres is stated for each visible approach and any drift is within a stated limit or corrected",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Map the ground-contact point of each box (bottom centre). Four points fit exactly and give no error estimate, so keep extra points as independent checks. Check for camera drift over each recording.",
+      "history": ["v0.3.0 2026-10-14: task added after the Opus 5.5 review"]
+    },
+    "T49": {
+      "title": "Obtain the priority emission papers and the ARAI Annexure IV",
+      "phase": "P5 Emissions",
+      "depends_on": [],
+      "output": "Files supplied by the user: ARAI 2007 report with Table I and Annexure IV, CRRI idle paper, Sharma 2019, and the other papers in EMISSION_SOURCES.md section 2",
+      "done_when": "The user has uploaded the files, or has said which ones cannot be obtained",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Owner: the user (college library, authors, ARAI or CPCB). Priority order is in EMISSION_SOURCES.md section 2. Do not use paywalled papers from memory or abstracts alone.",
+      "history": ["v0.4.0 2026-10-14: task added"]
+    },
+    "T50": {
+      "title": "Check each 'reported' source value against its paper",
+      "phase": "P5 Emissions",
+      "depends_on": ["T49"],
+      "output": "Register table in EMISSION_SOURCES.md with each value marked verified (paper and page) or not available",
+      "done_when": "Every value used in a result table is verified, or the table labels it 'source not checked'",
+      "status": "PENDING",
+      "evidence": "",
+      "notes": "Owner: the AI, once the user supplies the papers (T49). Do not mark a value verified from an abstract or from memory.",
+      "history": ["v0.5.0 2026-10-14: task added"]
+    }
+  }
+}

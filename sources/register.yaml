@@ -1,0 +1,124 @@
+# Source register (PRD section 8.1, decision D15).
+#
+# Every input value the code uses comes from the footage (measured) or from
+# this file. A value that is not here is a gap: the code raises SourceGap and
+# the user decides whether to add a source. Add entries only with the user's
+# approval and the date.
+#
+# status:
+#   verified  checked by hand against the source (page images or the paper)
+#   reported  from the AI research run of 14 Oct 2026; NOT checked against the
+#             paper. Usable only as a working estimate labelled
+#             "source not checked" until T50.
+
+sources:
+  irc_sp41_1994:
+    citation: >-
+      Indian Roads Congress, SP 41, "Guidelines for the Design of At-Grade
+      Intersections in Rural & Urban Areas", 1994 (scan supplied by the guide)
+    covers: saturation flow, capacity, PCU factors, fixed-time cycle and green split, warrants
+    notes: docs/project/IRC_SP41_extract.md
+    date_added: 2026-10-14
+  kumar_2015_crri:
+    citation: >-
+      Kumar PVP, Singh A, Sharma N, Chalumuri RS (2015). Evaluation of Idling
+      Fuel Consumption of Vehicles Across Different Cities. CSIR-CRRI.
+    covers: idle fuel use by vehicle class
+    notes: docs/project/EMISSION_SOURCES.md
+    date_added: 2026-10-14
+  wri_shakti_2015:
+    citation: WRI/Shakti (2015). India Specific Road Transport Emission Factors.
+    covers: fuel CO2 factors
+    notes: docs/project/EMISSION_SOURCES.md
+    date_added: 2026-10-14
+  arai_2007:
+    citation: >-
+      ARAI for CPCB/MoEF (2007, Rev-4 2008). Emission Factor development for
+      Indian Vehicles. Report AFL/2006-07/IOCL/Emission Factor Project/Final Rep.
+    covers: g/km factors (Table I); idle g/min (Annexure IV, not public)
+    notes: docs/project/EMISSION_SOURCES.md. No values entered until the report is obtained (T49).
+    date_added: 2026-10-14
+
+values:
+  # --- IRC SP 41 (1994), Chapter 7 -----------------------------------------
+  sp41.saturation_flow_per_m:
+    value: 525
+    unit: PCU/h per metre of approach width
+    source: irc_sp41_1994
+    ref: p. 76
+    status: verified
+    valid_range_m: [5.5, 18.0]
+    note: no parked vehicles
+  sp41.saturation_flow_narrow:
+    # approach width (m) -> saturation flow (PCU/h)
+    value: {3.0: 1850, 3.5: 1890, 4.0: 1950, 4.5: 2250, 5.0: 2550, 5.5: 2990}
+    unit: PCU/h
+    source: irc_sp41_1994
+    ref: p. 77
+    status: verified
+  sp41.gradient_effect_per_pct:
+    value: 0.03
+    unit: fraction of s per 1% slope (uphill reduces, downhill raises)
+    source: irc_sp41_1994
+    ref: p. 77
+    status: verified
+    note: slope measured from the stop line to 60 m before it
+  sp41.lost_time_per_phase_s:
+    value: 2
+    unit: s
+    source: irc_sp41_1994
+    ref: p. 78
+    status: verified
+    note: '"about 2 s per phase" for starting delay and amber'
+
+  # PCU factors. The project has not chosen between the two tables (O3), so the
+  # caller must name the table; there is no default.
+  sp41.pcu.table_3_1:
+    value:
+      passenger_car: 1.0
+      auto_rickshaw: 1.0
+      motorcycle_scooter: 0.5
+      light_commercial: 1.5
+      truck_bus: 3.0
+      tractor_trailer: 4.5
+      cycle: 0.5
+      cycle_rickshaw: 1.5
+    unit: PCU per vehicle
+    source: irc_sp41_1994
+    ref: Table 3.1, p. 15
+    status: verified
+  sp41.pcu.table_III_1:
+    value:
+      passenger_car: 1.0
+      auto_rickshaw: 1.0
+      motorcycle_scooter: 0.5
+      truck_bus: 3.0
+      tractor_trailer: 3.0
+      cycle: 0.5
+      cycle_rickshaw: 1.5
+    unit: PCU per vehicle
+    source: irc_sp41_1994
+    ref: Table III-1, p. 114
+    status: verified
+    note: no light commercial row
+
+  # --- Emissions, phase 1 (CO2 from idle time; D13) ------------------------
+  idle_fuel_l_per_h:
+    value:
+      motorcycle_petrol: 0.14
+      three_wheeler_petrol_2s: 0.24
+      car_petrol: 0.60
+      car_diesel: 0.60
+      bus_diesel: 0.90
+    unit: L/h
+    source: kumar_2015_crri
+    ref: abstract (per-class tables garbled in the copy read)
+    status: reported
+  fuel_co2_kg_per_l:
+    value:
+      petrol: 2.27193
+      diesel: 2.6444
+    unit: kg CO2 per litre
+    source: wri_shakti_2015
+    ref: fuel CO2 factors
+    status: reported

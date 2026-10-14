@@ -1,168 +1,60 @@
-# Traffic Vision
+# Pattom signal-timing study
 
-YOLO-based vehicle detection, tracking, and traffic-data extraction from recorded CCTV traffic footage.
+Final-year Civil Engineering project, Group 4: *Optimization of Traffic Management Strategies for Vehicular Emission Reduction at Urban Intersections*, Pattom intersection, Thiruvananthapuram.
 
-Traffic Vision is an offline computer-vision subsystem for a final-year Civil Engineering study of Pattom Intersection, Thiruvananthapuram, Kerala. It produces traceable vehicle-level data for later traffic/emission analysis.
-
-## Scope
-
-Included:
-- video ingestion and preprocessing
-- YOLO detection and configurable vehicle-class mapping
-- ByteTrack tracking
-- trajectories and visualization
-- ROI, entry/exit zones, and counting lines
-- movement-aware traffic counting
-- camera calibration
-- speed estimation
-- stopped/queue detection
-- manual review and bounding-box correction
-- active-learning dataset preparation
-- model evaluation
-- CSV/JSON/SQLite export and research dashboard
-
-Excluded:
-- final congestion-index methodology
-- emission/pollutant calculations
-- MCE
-- intersection redesign generation
-- SUMO simulation
-
-## Prompt architecture
-
-All implementation prompts live in `prompts/`.
+The study tests whether re-optimised or dynamic signal timing at Pattom can reduce delay, stops and estimated emissions. Pipeline (see `docs/project/ARCHITECTURE.md`):
 
 ```text
-prompts/
-├── master_prompt.md
-├── review_checklist.md
-├── phase_01_video_input_and_playback.md
-├── phase_02_yolo_detection.md
-├── phase_03_bytetrack_integration.md
-├── phase_04_trajectories_and_visualization.md
-├── phase_05_roi_and_counting_lines.md
-├── phase_06_vehicle_counting.md
-├── phase_07_camera_calibration.md
-├── phase_08_speed_estimation.md
-├── phase_09_queue_detection.md
-├── phase_10_manual_review.md
-├── phase_11_active_learning_dataset.md
-├── phase_12_model_evaluation.md
-└── phase_13_export_and_dashboard.md
+raw video -> preparation (CFR, lens correction) -> YOLO detection -> tracking -> review
+  -> traffic parameters (counts, signal phases, queue, stopped delay, V/C)
+  -> congestion index + emission estimate -> problems -> alternatives -> MCE -> SUMO
 ```
 
-The master prompt is reference-only. Its first implementation rule is:
+This is a fresh start (14 Oct 2026) built only from the documents in `docs/project/`. The earlier code base is kept in git history.
 
-> Implement nothing except the phase you are given.
+## Documents
 
-Phase prompts are sequential, independently executable, and explicitly bounded. Each phase must document what it changed and create a `HANDOFF.md` for the next phase.
-
-Independent review is performed separately by Pro subagents. The implementation model runs its own tests and reports raw output but does not declare acceptance.
-
-## Canonical data contract
-
-The source of truth for field names and provenance is:
-
-- `backend/database/schema.sql`
-- `docs/data_dictionary.md`
-
-Key rules:
-- every derived/result table carries `run_id`
-- every source video has a SHA-256
-- every processing run records model version and configuration hash
-- `timestamp_s` is authoritative for elapsed time
-- `frame_number / FPS` is not an authoritative timestamp for VFR footage
-- `queue_length_m` is the canonical queue-length field
-- `corrected_class` and `corrected_bbox_json` are the canonical correction fields
-- bottom-centre is the default physical ground point
-- calibration requires held-out validation points
-- dataset splits are by source video/segment, never adjacent frames
-
-## Phase ownership
-
-| Phase | Responsibility |
+| File | Use |
 |---|---|
-| 01 | Video input, timestamps, preprocessing/scaffolding, config, DB bootstrap, logging |
-| 02 | YOLO detection, tiling/merge, class mapping |
-| 03 | Direct ByteTrack integration and tracking quality |
-| 04 | Trajectories, ground points, visualization |
-| 05 | ROI, entry/exit zones, counting-line configuration |
-| 06 | Counting, movement derivation, 15-minute bins, ground-truth counting set |
-| 07 | Homography calibration and diagnostics |
-| 08 | Speed estimation |
-| 09 | Stopped/queue detection |
-| 10 | Manual review and bounding-box correction |
-| 11 | Training dataset/versioned split management |
-| 12 | Model training and evaluation |
-| 13 | Export and dashboard |
+| `docs/project/PRD.md` | What and why. Section 8.1 is the source register. |
+| `docs/project/ARCHITECTURE.md` | Components, data contracts, design constraints. |
+| `docs/project/PLAN.md` | Phases, gates, validation checks. |
+| `docs/project/AI_RULES.md` | Rules for AI agents working here. |
+| `docs/project/tasks.json` | Task and decision ledger. |
+| `docs/project/IRC_SP41_extract.md` | IRC SP 41 (1994) extract. |
+| `docs/project/EMISSION_SOURCES.md` | Emission sources. |
 
-## Development roadmap
+## Built so far
 
-```text
-[ ] 01 Video input + foundational scaffolding
-[ ] 02 YOLO detection
-[ ] 03 ByteTrack
-[ ] 04 Trajectories + visualization
-[ ] 05 ROI + entry/exit zones + counting lines
-[ ] 06 Counting + movement + ground truth
-[ ] 07 Calibration
-[ ] 08 Speed
-[ ] 09 Queue/stopped vehicles
-[ ] 10 Manual review
-[ ] 11 Active-learning dataset
-[ ] 12 Model evaluation
-[ ] 13 Export + dashboard
-```
+| Stage | Module | Status |
+|---|---|---|
+| Source register (D15) | `sources/register.yaml`, `pattom.register` | Done: missing values raise `SourceGap` |
+| Labelled values | `pattom.values` | Done: measured / derived / estimated |
+| Run metadata (4.1) | `pattom.runmeta` | Done |
+| B Preparation | `pattom.prepare` | Done: VFR probe, CFR copy, checkerboard lens calibration, undistortion |
+| F Capacity and V/C (FR-13) | `pattom.capacity` | Done: SP 41 section 7.6; PCU table must be named (O3) |
+| C-E, rest of F, G-M | | Not started |
 
-## Current implementation: Phase 01 foundation
+## Setup
 
-The current implementation branch establishes only the Phase 01 foundation: canonical SQLite bootstrap, per-connection foreign-key enforcement, deterministic configuration hashing, source-file SHA-256 provenance, streaming decoder-PTS ingestion, and minimal health/UI wiring. It does not implement detection, tracking, geometry, counting, calibration, speed, queues, model training, or a dashboard.
-
-Use Python 3.12 with [uv](https://docs.astral.sh/uv/) from the repository root:
+Python 3.12, [uv](https://docs.astral.sh/uv/) and ffmpeg on PATH.
 
 ```text
 uv sync --python 3.12 --group dev
 uv run pytest
-uv run traffic-vision bootstrap-db
-uv run uvicorn backend.app:app
 ```
 
-To ingest a supported recorded video after it has been explicitly placed in scope:
+## Preparation commands
 
 ```text
-uv run traffic-vision ingest path/to/video.mp4 --wall-clock-start 2026-10-11T09:00:00+05:30
+uv run pattom probe data/raw/IMG_1483.MOV
+uv run pattom cfr data/raw/IMG_1483.MOV data/cfr/test_01.mp4 --slot test
+uv run pattom calibrate-lens data/raw/checkerboard.MOV --cols 9 --rows 6 --square-mm 25
+uv run pattom undistort data/cfr/test_01.mp4 data/undistorted/test_01.mp4 --slot test
 ```
 
-The ingest command stores only source metadata, a SHA-256 fingerprint, decoder PTS mapping, and run provenance. Complete the site/footage questionnaire before using any future analytics phase.
+Originals go in `data/raw/` and are never written to. Each output gets a `.run.json` with the source SHA-256, settings and code revision.
 
-Phase 2 adds detection-only execution once you supply weights and a model mapping in a separate configuration file. It does not download weights automatically and never calls tracking:
+## Folder layout
 
-```text
-uv run traffic-vision detect PARENT_RUN_ID --config path/to/detection-config.yaml
-```
-
-## Repository structure
-
-```text
-traffic-vision/
-├── backend/
-│   ├── api/
-│   ├── services/
-│   ├── models/
-│   └── database/
-│       └── schema.sql
-├── frontend/
-├── cv/
-├── data/
-├── models/
-├── tests/
-├── configs/
-├── scripts/
-├── docs/
-│   └── data_dictionary.md
-├── prompts/
-├── requirements.txt
-└── README.md
-```
-
-The exact implementation structure may evolve, but the canonical schema/data dictionary and prompt contracts must remain stable unless deliberately versioned.
+`data/raw`, `data/cfr`, `data/undistorted` (not in git), `sources/`, `calibration/`, `labels/`, `models/`, `runs/<slot>/`, `outputs/`, `sumo/`.

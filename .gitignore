@@ -2,7 +2,14 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-data/raw/
-data/processed/
-*.sqlite3
-*.db
+# Video and derived media stay on the PC, never in git.
+data/
+*.mp4
+*.mov
+*.MOV
+*.mkv
+# Weights and large run outputs.
+models/*
+!models/.gitkeep
+runs/*
+!runs/.gitkeep
