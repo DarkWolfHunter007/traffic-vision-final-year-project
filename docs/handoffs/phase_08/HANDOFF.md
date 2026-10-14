@@ -16,7 +16,7 @@
   - Flags non-monotonic or zero timestamps ($\Delta t \le 0$) as `status = 'invalid'`.
   - Flags observation gaps ($\Delta t > \text{max_gap_seconds}$) as `status = 'unavailable'`.
   - Flags short tracks ($< \text{min_track_points}$) as `status = 'unavailable'`.
-  - Stationary rule (frame-rate independent): speed over a reference span of at least `STATIONARY_REFERENCE_S = 0.5` s of track time (raw positions, clipped to the gap-free segment) below `min_displacement_m / 0.5` m/s gives valid 0.0 m/s / 0.0 km/h. Because the decision uses a time span rather than a single step, jitter at segment edges (where smoothing cannot be applied) also yields 0.0 at any fps. This holds for segments >= 0.5 s; shorter gap-free segments use the displacement rule instead: total displacement over the whole segment below `min_displacement_m` gives valid 0.0, otherwise the instantaneous speed is used.
+  - Stationary rule (frame-rate independent): speed over a reference span of at least `STATIONARY_REFERENCE_S = 0.5` s of track time (raw positions, clipped to the gap-free segment) below `min_displacement_m / 0.5` m/s gives valid 0.0 m/s / 0.0 km/h. Because the decision uses a time span rather than a single step, jitter at segment edges (where smoothing cannot be applied) also yields 0.0 at any fps. This holds for segments >= 0.5 s; shorter gap-free segments use the displacement rule instead: total displacement over the whole segment below `min_displacement_m` gives valid 0.0, otherwise the instantaneous speed is used, except that with fewer than `MIN_POINTS_SHORT_SEGMENT = 5` points and a step speed at or above the stationary threshold the step is `unavailable` with NULL speeds (jitter cannot be told from motion).
   - Flags implausible speeds (> `max_plausible_speed_mps`) as `status = 'invalid'`, checking both the smoothed step speed and the raw unsmoothed step speed; every output whose smoothing window contains a flagged raw step is invalid.
   - `smoothing_window` is stored NULL when smoothing is not applied (method `'none'` or window 0).
   - Observation values (`speed_mps`, `speed_kmh`) are rounded to 4 decimal places; aggregate stats are rounded to 2.
@@ -120,6 +120,8 @@ Ultra-short segment rule: for gap-free segments with span < 0.5 s, valid 0.0 is 
 ---
 
 ## 6. Assumptions and Limitations
+
+- **Known limitation (judge finding D-A):** the 5-point exemption in the short-segment rule counts points only and does not check that the path oscillates. A gap-free segment of >= 5 points spanning < 0.5 s with < 0.1 m total displacement is reported as valid 0.0 even for real slow/medium motion at very high frame rates (e.g. 2 m/s at 120 fps with 5-7 points, 1 m/s at 60 fps with 5-6 points, 4 m/s at 240 fps). Not covered by tests; recommended fix before relying on > 60 fps footage: require net displacement much smaller than summed step lengths, else mark `unavailable`.
 
 1. **Planar-Road Assumption**: Speed calculations assume the vehicle bottom-centre ground point moves on the flat ground plane calibrated in Phase 07. Road grade, elevation changes, or flyovers may introduce localized projective distortions.
 2. **Ground Contact Point**: Speed estimation strictly depends on the bottom-centre contact point `(ground_x, ground_y)` of the vehicle bounding box. Bounding-box centres are prohibited.
