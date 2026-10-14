@@ -1,0 +1,18 @@
+# Copy to calibration/ground.yaml after the site visit (T04, T48).
+# px: pixel in the undistorted frame; m: ground position in metres in one
+# site coordinate system. Values below are placeholders.
+mappings:
+  all:                                   # or one block per approach
+    zone_px: [[0, 400], [3840, 400], [3840, 2160], [0, 2160]]
+    points:
+      - {id: Z1, px: [1200, 900],  m: [0.0, 0.0],  role: fit}
+      - {id: Z2, px: [2600, 900],  m: [12.0, 0.0], role: fit}
+      - {id: Z3, px: [2900, 1800], m: [12.0, 9.0], role: fit}
+      - {id: Z4, px: [900, 1800],  m: [0.0, 9.0],  role: fit}
+      - {id: Z5, px: [1900, 1300], m: [6.0, 4.5],  role: check}   # never used to fit
+    check_distances:                     # tape measurements, e.g. a zebra stripe
+      - {a_px: [1500, 1000], b_px: [1560, 1000], distance_m: 0.5}
+
+# Fixed features for the camera-drift check (poles, kerb corners), as pixel boxes.
+landmarks:
+  - {id: pole_ne, box_px: [3300, 200, 3360, 320]}

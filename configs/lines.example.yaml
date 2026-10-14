@@ -1,0 +1,13 @@
+# Copy to configs/lines.yaml. Line positions come from the written definitions
+# (T46, FR-23) and the test clip; the coordinates below are placeholders.
+# Pixels are in the prepared (undistorted) video. "direction" is the side a
+# counted vehicle comes from, seen walking from the first endpoint to the second.
+lines:
+  - {name: N_stop,    type: stop_line, approach: north, endpoints_px: [[1500, 700], [2100, 700]], direction: left}
+  - {name: N_arrival, type: arrival,   approach: north, endpoints_px: [[1550, 450], [2000, 450]], direction: left}
+  - {name: S_exit,    type: exit,      approach: south, endpoints_px: [[1500, 1700], [2200, 1700]], direction: left}
+  - {name: E_exit,    type: exit,      approach: east,  endpoints_px: [[2900, 800], [2900, 1400]], direction: right}
+
+movements:
+  - {approach: north, movement: through, entry_line: N_stop, exit_line: S_exit}
+  - {approach: north, movement: left,    entry_line: N_stop, exit_line: E_exit}

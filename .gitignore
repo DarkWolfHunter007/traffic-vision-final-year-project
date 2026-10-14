@@ -18,3 +18,5 @@ runs/*
 # Local configs are copied from the *.example.yaml files and tuned per site.
 configs/detection.yaml
 configs/tracker.yaml
+configs/lines.yaml
+calibration/ground.yaml

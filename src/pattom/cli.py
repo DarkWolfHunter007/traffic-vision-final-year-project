@@ -53,6 +53,35 @@ def _track(args) -> None:
     print(run_tracking(Path(args.detections), TrackerConfig.load(Path(args.config))))
 
 
+def _ground(args) -> None:
+    from pattom.ground import GroundCalibration, map_tracks
+
+    cal = GroundCalibration.from_config(Path(args.config))
+    print(json.dumps(cal.report(), indent=2))
+    if args.tracks:
+        print(map_tracks(Path(args.tracks), cal))
+
+
+def _drift(args) -> None:
+    import yaml
+
+    from pattom.ground import drift_check, write_drift
+
+    landmarks = (yaml.safe_load(Path(args.config).read_text(encoding="utf-8")) or {}).get("landmarks") or []
+    frames = prepare.sample_frames(Path(args.video), args.every)
+    reference = next(frames)
+    samples = drift_check(((i * args.every, f) for i, f in enumerate(frames, start=1)), reference, landmarks)
+    out = write_drift(samples, Path(args.out))
+    worst = max((s.max_shift_px for s in samples), default=0.0)
+    print(f"{len(samples)} frames checked, largest landmark shift {worst:.1f} px -> {out}")
+
+
+def _count(args) -> None:
+    from pattom.counting import run_counting
+
+    print(run_counting(Path(args.tracks), Path(args.lines), args.interval_s, args.offset_s))
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="pattom")
     sub = p.add_subparsers(required=True)
@@ -94,6 +123,25 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("detections")
     s.add_argument("--config", default=str(REPO_ROOT / "configs" / "tracker.yaml"))
     s.set_defaults(func=_track)
+
+    s = sub.add_parser("ground", help="fit the pixel-to-ground mapping, report check errors, optionally map a tracks.csv")
+    s.add_argument("--config", default=str(CALIBRATION / "ground.yaml"))
+    s.add_argument("--tracks", help="tracks.csv to fill with ground_x_m / ground_y_m")
+    s.set_defaults(func=_ground)
+
+    s = sub.add_parser("drift", help="check a recording for camera movement using fixed landmarks")
+    s.add_argument("video")
+    s.add_argument("--config", default=str(CALIBRATION / "ground.yaml"))
+    s.add_argument("--every", type=float, default=10.0, help="seconds between checked frames")
+    s.add_argument("--out", required=True)
+    s.set_defaults(func=_drift)
+
+    s = sub.add_parser("count", help="crossings, movements and interval counts from tracks.csv")
+    s.add_argument("tracks")
+    s.add_argument("--lines", default=str(REPO_ROOT / "configs" / "lines.yaml"))
+    s.add_argument("--interval-s", type=float, default=900.0, help="interval length (default 15 min)")
+    s.add_argument("--offset-s", type=float, default=0.0, help="start of this file within its slot")
+    s.set_defaults(func=_count)
 
     args = p.parse_args(argv)
     args.func(args)

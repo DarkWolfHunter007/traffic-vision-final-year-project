@@ -34,8 +34,10 @@ This is a fresh start (14 Oct 2026) built only from the documents in `docs/proje
 | B Preparation | `pattom.prepare` | Done: VFR probe, CFR copy, checkerboard lens calibration, undistortion |
 | C Detection | `pattom.detection` | Done: YOLO (Ultralytics), optional far-arm tiles merged by NMS, explicit label mapping |
 | D Tracking | `pattom.tracking` | Done: ByteTrack on the detections file, per-track class changes |
+| F Ground mapping and drift (FR-24) | `pattom.ground` | Done: homography per approach, check points required, error in metres, landmark drift check |
+| F Counting (FR-09) | `pattom.counting` | Done: stop and arrival lines, one-way crossings, movements incl. free left, interval counts |
 | F Capacity and V/C (FR-13) | `pattom.capacity` | Done: SP 41 section 7.6; PCU table must be named (O3) |
-| E, rest of F, G-M | | Not started |
+| E review, F signal phases / queue / stopped delay, G-M | | Not started |
 
 ## Setup
 
@@ -74,6 +76,16 @@ uv run pattom track runs/test/test_01/detections.csv
 ```
 
 Outputs in `runs/<slot>/<video>/`: `detections.csv`, `tracks.csv` (ARCHITECTURE 4.2; ground columns are filled later by the ground mapping), `track_summary.csv` (per-track class and class changes, for the review flags) and a `.run.json` for each step.
+
+## Ground mapping, drift and counting
+
+```text
+uv run pattom ground --tracks runs/test/test_01/tracks.csv        (calibration/ground.yaml)
+uv run pattom drift data/undistorted/test_01.mp4 --out runs/test/test_01/drift.json
+uv run pattom count runs/test/test_01/tracks.csv --interval-s 900  (configs/lines.yaml)
+```
+
+Writes `crossings.csv` and `interval_counts.csv` (ARCHITECTURE 4.4). Examples: `calibration/ground.example.yaml`, `configs/lines.example.yaml`.
 
 Originals go in `data/raw/` and are never written to. Each output gets a `.run.json` with the source SHA-256, settings and code revision.
 
