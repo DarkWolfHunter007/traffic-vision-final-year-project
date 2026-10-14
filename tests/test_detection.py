@@ -40,3 +40,36 @@ def test_roi_crop_validates_and_preserves_offsets() -> None:
     assert (x_offset, y_offset) == (5, 4)
     with pytest.raises(DetectionError):
         validate_roi_crop([5, 4, 40, 15], image.shape[1], image.shape[0])
+
+
+def test_ignored_raw_classes_config_validation() -> None:
+    from backend.config import ConfigError, load_config
+
+    assert load_config()["detection"]["ignored_raw_classes"] == []
+    ok = load_config(overrides={"detection": {"class_mapping": {"car": "car"}, "ignored_raw_classes": ["person"]}})
+    assert ok["detection"]["ignored_raw_classes"] == ["person"]
+    for bad in ("person", [""], [1], ["  "]):
+        with pytest.raises(ConfigError, match="ignored_raw_classes"):
+            load_config(overrides={"detection": {"ignored_raw_classes": bad}})
+    with pytest.raises(ConfigError, match="overlap"):
+        load_config(overrides={"detection": {"class_mapping": {"car": "car"}, "ignored_raw_classes": ["car"]}})
+
+
+def test_detect_image_ignores_listed_labels_and_counts() -> None:
+    import numpy as np
+
+    from backend.config import load_config
+    from backend.services.detection import detect_image
+
+    class Det:
+        def predict(self, image, *, confidence, iou, image_size):
+            return [detection(label="car"), detection(label="person"), detection(label="person", x1=50, x2=60)]
+
+    config = load_config(overrides={"detection": {"class_mapping": {"car": "car"}, "ignored_raw_classes": ["person"]}})
+    counts: dict[str, int] = {}
+    result = detect_image(np.zeros((24, 32, 3), dtype=np.uint8), config, Det(), counts)
+    assert [d.class_name for d in result] == ["car"]
+    assert counts == {"person": 2}
+    strict = load_config(overrides={"detection": {"class_mapping": {"car": "car"}}})
+    with pytest.raises(DetectionError):
+        detect_image(np.zeros((24, 32, 3), dtype=np.uint8), strict, Det())

@@ -54,3 +54,42 @@ def test_detection_run_persists_only_canonical_detections(tmp_path: Path, source
     assert all(row[0] == detection_run_id and row[1] == "car" for row in rows)
     assert rows[0][2:4] == (7.0, 13.0)
     assert tracks == 0
+
+
+class MixedDetector:
+    def __init__(self, extra_label: str) -> None:
+        self.extra_label = extra_label
+
+    def predict(self, image: np.ndarray, *, confidence: float, iou: float, image_size: int) -> list[RawDetection]:
+        return [RawDetection(2, "car", 0.9, 2, 3, 12, 13), RawDetection(0, self.extra_label, 0.8, 14, 3, 24, 13), RawDetection(0, self.extra_label, 0.7, 1, 15, 8, 22)]
+
+
+def _ignore_config(tmp_path: Path, ignored: list[str]) -> dict:
+    model_path = tmp_path / "fake-weights.pt"
+    model_path.write_bytes(b"fixture-weights")
+    return load_config(
+        overrides={
+            "paths": {"database_path": str(tmp_path / "traffic.sqlite3")},
+            "detection": {"model": {"version": "fixture-v1", "path": str(model_path), "device": "cpu"}, "class_mapping": {"car": "car"}, "ignored_raw_classes": ignored},
+        }
+    )
+
+
+def test_ignored_raw_classes_dropped_not_persisted_and_counted(tmp_path: Path, source_video: Path) -> None:
+    config = _ignore_config(tmp_path, ["person"])
+    parent = ingest_video(source_video, config, repository_root=Path.cwd())
+    run_id = run_detection(parent["run_id"], config, Path.cwd(), MixedDetector("person"))
+    with sqlite3.connect(tmp_path / "traffic.sqlite3") as connection:
+        names = {row[0] for row in connection.execute("SELECT class_name FROM detections WHERE run_id = ?", (run_id,))}
+        status, notes, config_json = connection.execute("SELECT status, notes, config_json FROM processing_runs WHERE run_id = ?", (run_id,)).fetchone()
+    assert names == {"car"}
+    assert status == "completed"
+    assert '{"person": 4}' in notes  # 2 frames x 2 person detections
+    assert '"ignored_raw_classes":["person"]' in config_json
+
+
+def test_unlisted_unmapped_label_still_fails_run(tmp_path: Path, source_video: Path) -> None:
+    config = _ignore_config(tmp_path, ["person"])
+    parent = ingest_video(source_video, config, repository_root=Path.cwd())
+    with pytest.raises(Exception, match="traffic light"):
+        run_detection(parent["run_id"], config, Path.cwd(), MixedDetector("traffic light"))

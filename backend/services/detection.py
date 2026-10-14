@@ -17,9 +17,14 @@ from backend.media import iter_decoded_images, sha256_file
 from backend.services.ingestion import _utc_now, current_code_version
 
 
-def detect_image(image: Any, config: dict[str, Any], detector: Detector) -> list[Detection]:
-    """Run configured ROI/tile detection and return full-frame canonical geometry."""
+def detect_image(image: Any, config: dict[str, Any], detector: Detector, ignored_counts: dict[str, int] | None = None) -> list[Detection]:
+    """Run configured ROI/tile detection and return full-frame canonical geometry.
+
+    Raw labels listed in detection.ignored_raw_classes are dropped before merging/mapping and are
+    tallied into ``ignored_counts`` (if given). Any other unmapped label still raises.
+    """
     settings = config["detection"]
+    ignored = set(settings.get("ignored_raw_classes") or [])
     roi = validate_roi_crop(settings["roi_crop"], image.shape[1], image.shape[0])
     cropped, roi_x, roi_y = crop_image(image, roi)
     tiling = settings["tiling"]
@@ -35,6 +40,15 @@ def detect_image(image: Any, config: dict[str, Any], detector: Detector) -> list
             detection.translated(x_offset, y_offset)
             for detection in detector.predict(tile_image, confidence=settings["confidence_threshold"], iou=settings["iou_threshold"], image_size=settings["image_size"])
         )
+    if ignored:
+        kept: list[RawDetection] = []
+        for raw in raw_detections:
+            if raw.raw_class_name in ignored:
+                if ignored_counts is not None:
+                    ignored_counts[raw.raw_class_name] = ignored_counts.get(raw.raw_class_name, 0) + 1
+            else:
+                kept.append(raw)
+        raw_detections = kept
     return [map_detection(raw, settings["class_mapping"]) for raw in merge_tile_detections(raw_detections, settings["iou_threshold"])]
 
 
@@ -61,14 +75,18 @@ def run_detection(parent_run_id: str, config: dict[str, Any], repository_root: P
             raise ValueError("Parent run references a missing video")
         insert_model_version(connection, {"model_version": model["version"], "model_path": str(model_path.resolve()), "sha256": sha256_file(model_path), "dataset_version": None, "created_at": _utc_now(), "metrics_json": json.dumps({})})
         insert_run(connection, {"run_id": run_id, "parent_run_id": parent_run_id, "video_id": parent["video_id"], "model_version": model["version"], "config_hash": config_hash(config), "config_json": canonical_json(config), "schema_version": schema_version(), "code_version": current_code_version(repository_root), "source_video_sha256": parent["source_video_sha256"], "started_at": _utc_now(), "status": "running", "notes": "Phase 02 detection run"})
+    ignored_counts: dict[str, int] = {}
     try:
         with database_connection(database_path) as connection:
             for frame_number, timestamp_s, image in iter_decoded_images(Path(video["path"])):
                 if frame_number % config["detection"]["frame_stride"]:
                     continue
-                detections = detect_image(image, config, detector)
+                detections = detect_image(image, config, detector, ignored_counts)
                 insert_detections(connection, ({"detection_id": str(uuid4()), "run_id": run_id, "video_id": parent["video_id"], "frame_number": frame_number, "timestamp_s": timestamp_s, "class_id": detection.class_id, "class_name": detection.class_name, "confidence": detection.confidence, "x1": detection.x1, "y1": detection.y1, "x2": detection.x2, "y2": detection.y2, "ground_x": detection.ground_x, "ground_y": detection.ground_y, "width_px": detection.width_px, "height_px": detection.height_px} for detection in detections))
-            update_run_status(connection, run_id, "completed", completed_at=_utc_now())
+            notes = "Phase 02 detection run"
+            if config["detection"].get("ignored_raw_classes"):
+                notes += "; ignored_raw_detections=" + json.dumps(dict(sorted(ignored_counts.items())), sort_keys=True)
+            update_run_status(connection, run_id, "completed", completed_at=_utc_now(), notes=notes)
     except Exception as error:
         with database_connection(database_path) as connection:
             update_run_status(connection, run_id, "failed", completed_at=_utc_now(), notes=str(error))

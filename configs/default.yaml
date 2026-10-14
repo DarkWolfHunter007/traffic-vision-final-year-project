@@ -35,6 +35,9 @@ detection:
     height: 640
     overlap: 0.2
   class_mapping: {}
+  # Explicit, audited drop list for raw model labels (e.g. COCO 'person'). Unmapped labels not listed
+  # here still fail the run. Must not overlap class_mapping keys. Example: [person, traffic light]
+  ignored_raw_classes: []
 tracking:
   tracker_type: bytetrack
   track_high_thresh: 0.5

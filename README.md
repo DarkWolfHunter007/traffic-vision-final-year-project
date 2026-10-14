@@ -135,7 +135,7 @@ uv run traffic-vision ingest path/to/video.mp4 --wall-clock-start 2026-10-11T09:
 
 The ingest command stores only source metadata, a SHA-256 fingerprint, decoder PTS mapping, and run provenance. Complete the site/footage questionnaire before using any future analytics phase.
 
-Phase 2 adds detection-only execution once you supply weights and a model mapping in a separate configuration file. It does not download weights automatically and never calls tracking:
+Phase 2 adds detection-only execution once you supply weights and a model mapping in a separate configuration file. It does not download weights automatically and never calls tracking. Unmapped model labels fail the run unless explicitly listed in `detection.ignored_raw_classes`, in which case they are dropped (never persisted) and their per-label counts are recorded in the run notes:
 
 ```text
 uv run traffic-vision detect PARENT_RUN_ID --config path/to/detection-config.yaml

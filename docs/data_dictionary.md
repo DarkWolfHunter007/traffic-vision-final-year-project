@@ -45,6 +45,8 @@ For image-to-ground projection, use the configurable bottom-centre of the vehicl
 
 The model class IDs and project vehicle classes are separate concepts. Phase 02 must define an explicit mapping/configuration and must not assume COCO contains every Kerala traffic class, including auto-rickshaws.
 
+Model labels absent from `detection.class_mapping` fail the run. To discard irrelevant labels from a general-purpose model (e.g. COCO `person`), list them explicitly in `detection.ignored_raw_classes`; they are dropped before mapping, never persisted, part of the config snapshot/hash, and per-label drop counts are recorded in the detection run's `notes`.
+
 ## Manual corrections
 
 A correction must preserve the original prediction and may include corrected bounding-box geometry, not only a class label. Corrected samples remain traceable to the source video, run, frame/timestamp, reviewer, review time, and review event. `manual_reviews` stores the snippet path when a review clip is generated.

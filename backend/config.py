@@ -30,6 +30,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "roi_crop": None,
         "tiling": {"enabled": False, "width": 640, "height": 640, "overlap": 0.2},
         "class_mapping": {},
+        "ignored_raw_classes": [],
     },
     "tracking": {
         "tracker_type": "bytetrack",
@@ -202,6 +203,12 @@ def _validate(config: Mapping[str, Any]) -> None:
         raise ConfigError("detection.tiling.overlap must be at least zero and below one")
     if not isinstance(detection.get("class_mapping"), Mapping):
         raise ConfigError("detection.class_mapping must be a mapping")
+    ignored = detection.get("ignored_raw_classes", [])
+    if not isinstance(ignored, list) or not all(isinstance(label, str) and label.strip() for label in ignored):
+        raise ConfigError("detection.ignored_raw_classes must be a list of non-empty strings")
+    overlap = sorted(set(ignored) & set(detection["class_mapping"]))
+    if overlap:
+        raise ConfigError(f"detection.ignored_raw_classes must not overlap class_mapping keys: {', '.join(overlap)}")
     tracking = config.get("tracking")
     if tracking is not None:
         if not isinstance(tracking, Mapping):
