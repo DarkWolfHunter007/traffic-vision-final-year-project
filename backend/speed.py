@@ -268,7 +268,8 @@ def estimate_speeds_for_trajectory(
         seg_of[i] = cur_seg
         last_valid = i
 
-    def _reference_speed(i: int) -> float:
+    def _reference_motion(i: int) -> tuple[float, float]:
+        """Return (displacement_m, span_s) over the stationary reference span."""
         seg = seg_of[i]
         b = seg.index(i)
         pos0 = b
@@ -285,7 +286,7 @@ def estimate_speeds_for_trajectory(
         c0 = world_coords[seg[a]]
         c1 = world_coords[seg[b]]
         span = pts[seg[b]].timestamp_s - pts[seg[a]].timestamp_s
-        return math.hypot(c1[0] - c0[0], c1[1] - c0[1]) / span  # type: ignore[index]
+        return math.hypot(c1[0] - c0[0], c1[1] - c0[1]), span  # type: ignore[index]
 
     # Raw (unsmoothed) outlier steps: step s joins raw points s-1 and s
     flagged_steps: list[int] = []
@@ -428,7 +429,14 @@ def estimate_speeds_for_trajectory(
         lo_ext = min(extents[i - 1][0], extents[i][0])
         hi_ext = max(extents[i - 1][1], extents[i][1])
         raw_outlier = any(lo_ext <= st - 1 and st <= hi_ext for st in flagged_steps)
-        stationary = _reference_speed(i) < (min_displacement_m / STATIONARY_REFERENCE_S)
+        ref_disp, ref_span = _reference_motion(i)
+        if ref_span < STATIONARY_REFERENCE_S - 1e-9:
+            # Gap-free segment shorter than the reference span: compare total
+            # displacement directly so the effective threshold never drops
+            # below min_displacement_m.
+            stationary = ref_disp < min_displacement_m
+        else:
+            stationary = ref_disp / ref_span < (min_displacement_m / STATIONARY_REFERENCE_S)
 
         if not raw_outlier and stationary:
             observations.append(

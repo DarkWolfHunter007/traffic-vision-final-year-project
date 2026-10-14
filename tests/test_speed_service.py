@@ -565,9 +565,11 @@ def test_failed_insert_leaves_no_rows_and_run_failed(
         assert [r["status"] for r in failed] == ["failed"]
 
 
-def test_failed_insert_preserves_caller_pending_work(
+def test_failed_insert_caller_pending_work_committed_and_rows_rolled_back(
     speed_test_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """On a caller connection the service commits the caller's pending work
+    (it is not discarded), while its own partial inserts are rolled back."""
     env = speed_test_env
     monkeypatch.setattr("backend.services.speed.insert_speed_observations", _failing_insert)
     conn = sqlite3.connect(env["db_path"])
@@ -584,3 +586,25 @@ def test_failed_insert_preserves_caller_pending_work(
         assert conn.execute("SELECT filename FROM videos").fetchone()[0] == "pending_caller_change.mp4"
     finally:
         conn.close()
+
+
+def test_failure_after_insert_leaves_no_rows_and_run_failed(
+    speed_test_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = speed_test_env
+
+    def _boom(conn: sqlite3.Connection, run_id: str) -> Any:
+        raise RuntimeError("software fixture stats failure")
+
+    monkeypatch.setattr("backend.services.speed.fetch_speed_observation_stats", _boom)
+    with pytest.raises(RuntimeError, match="stats failure"):
+        run_speed_estimation(
+            parent_run_id=env["tracking_run_id"], calibration_id=env["accepted_calib_id"],
+            config=env["config"], repository_root=env["tmp_path"],
+        )
+    with database_connection(env["db_path"]) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM speed_observations").fetchone()[0] == 0
+        statuses = conn.execute(
+            "SELECT status FROM processing_runs WHERE parent_run_id = ?", (env["tracking_run_id"],)
+        ).fetchall()
+        assert [r["status"] for r in statuses] == ["failed"]

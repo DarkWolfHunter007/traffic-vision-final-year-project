@@ -16,7 +16,7 @@
   - Flags non-monotonic or zero timestamps ($\Delta t \le 0$) as `status = 'invalid'`.
   - Flags observation gaps ($\Delta t > \text{max_gap_seconds}$) as `status = 'unavailable'`.
   - Flags short tracks ($< \text{min_track_points}$) as `status = 'unavailable'`.
-  - Stationary rule (frame-rate independent): speed over a reference span of at least `STATIONARY_REFERENCE_S = 0.5` s of track time (raw positions, clipped to the gap-free segment) below `min_displacement_m / 0.5` m/s gives valid 0.0 m/s / 0.0 km/h. Because the decision uses a time span rather than a single step, jitter at segment edges (where smoothing cannot be applied) also yields 0.0 at any fps. Segments shorter than 0.5 s use the whole segment.
+  - Stationary rule (frame-rate independent): speed over a reference span of at least `STATIONARY_REFERENCE_S = 0.5` s of track time (raw positions, clipped to the gap-free segment) below `min_displacement_m / 0.5` m/s gives valid 0.0 m/s / 0.0 km/h. Because the decision uses a time span rather than a single step, jitter at segment edges (where smoothing cannot be applied) also yields 0.0 at any fps. This holds for segments >= 0.5 s; shorter gap-free segments use the displacement rule instead: total displacement over the whole segment below `min_displacement_m` gives valid 0.0, otherwise the instantaneous speed is used.
   - Flags implausible speeds (> `max_plausible_speed_mps`) as `status = 'invalid'`, checking both the smoothed step speed and the raw unsmoothed step speed; every output whose smoothing window contains a flagged raw step is invalid.
   - `smoothing_window` is stored NULL when smoothing is not applied (method `'none'` or window 0).
   - Observation values (`speed_mps`, `speed_kmh`) are rounded to 4 decimal places; aggregate stats are rounded to 2.
@@ -24,7 +24,7 @@
 - `estimate_speeds_for_trajectories(trajectories, homography_matrix, calibration_id, run_id, config=None)`: Batch wrapper applying speed estimation across a collection of trajectories.
 
 ### Speed Estimation Service (`backend.services.speed`)
-- `run_speed_estimation(parent_run_id, calibration_id=None, config=None, repository_root=None, connection=None)`: Orchestrates speed estimation for a completed tracking parent run. Requires the parent to be a completed tracking run (rows in `tracks`, or notes starting `Phase 03 ByteTrack`). Validates calibration acceptance (`calibration_runs.accepted = 1`) and that an explicit calibration's `video_id` equals the parent run's `video_id`; automatically resolves latest accepted calibration if `calibration_id` is omitted, creates a child `processing_runs` record with full provenance, reconstructs trajectories via Phase 04 `build_trajectories()`, calculates speeds, persists batch records to `speed_observations` inside a SAVEPOINT (a failed insert leaves zero rows, marks the run `'failed'`, and never rolls back unrelated pending work on a caller-supplied connection; the service itself commits its own run rows), updates run status to `'completed'`, and returns execution summary statistics.
+- `run_speed_estimation(parent_run_id, calibration_id=None, config=None, repository_root=None, connection=None)`: Orchestrates speed estimation for a completed tracking parent run. Requires the parent to be a completed tracking run (rows in `tracks`, or notes starting `Phase 03 ByteTrack`). Validates calibration acceptance (`calibration_runs.accepted = 1`) and that an explicit calibration's `video_id` equals the parent run's `video_id`; automatically resolves latest accepted calibration if `calibration_id` is omitted, creates a child `processing_runs` record with full provenance, reconstructs trajectories via Phase 04 `build_trajectories()`, calculates speeds, persists batch records to `speed_observations` inside a SAVEPOINT (completion status and stats are produced inside the savepoint before release, so any failure leaves zero speed rows and marks the run `'failed'`. Transaction note: on a caller-supplied connection the service commits the caller's pending transaction, on both success and failure; only the service's own inserts are rolled back, and unrelated pending work is committed rather than discarded), updates run status to `'completed'`, and returns execution summary statistics.
 - `get_speed_observations(run_id, track_id=None, limit=None, config=None, repository_root=None, connection=None)`: Queries stored speed observations and aggregate summary metrics for a speed run or vehicle track.
 
 ### Repository Operations (`backend.database.repository`)
@@ -109,10 +109,10 @@ Running `uv run pytest -q`:
 ........................................................................ [ 51%]
 ........................................................................ [ 77%]
 ..............................................................           [100%]
-278 passed in 23.22s
+285 passed in 33.02s
 ```
 
-Phase 08 tests: `tests/test_speed.py` and `tests/test_speed_service.py` (value-checking tests for D1-D9, N1, N2).
+Phase 08 tests: `tests/test_speed.py` and `tests/test_speed_service.py` (value-checking tests for D1-D9, N1, N2, N4, N5).
 
 ---
 
@@ -129,7 +129,7 @@ Phase 08 tests: `tests/test_speed.py` and `tests/test_speed_service.py` (value-c
 ## 7. Dependencies for Phase 09 (Queue and Stopped Vehicles)
 
 - Phase 09 consumes `speed_observations` (`speed_kmh`, `speed_mps`, `status`) to classify stopped vehicles against configurable stopped speed thresholds (e.g. $\le 5$ km/h for $\ge 3$ s).
-- Phase 09 consumes calibrated world coordinates to measure queue lengths in metres (`queue_length_m`) within configured approach zones.
+- World coordinates are NOT persisted in `speed_observations`. For queue lengths in metres (`queue_length_m`) within approach zones, Phase 09 must project from the stored ground points using the calibration homography itself.
 
 ---
 

@@ -51,6 +51,12 @@ def run_speed_estimation(
         repository_root: Path to repository root.
         connection: Optional existing SQLite database connection.
 
+    Transaction semantics: the service commits its own run rows. On a
+    caller-supplied ``connection`` it therefore also commits the caller's
+    pending transaction (on success and on failure); only the service's own
+    speed_observations inserts are rolled back on failure (via a SAVEPOINT),
+    after which the run is marked 'failed'.
+
     Returns:
         Summary dict containing run_id, parent_run_id, calibration_id,
         observation counts, and speed statistics.
@@ -185,14 +191,14 @@ def run_speed_estimation(
 
             # Batch insert into speed_observations
             insert_speed_observations(conn, all_rows)
-            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
 
-            # Mark run as completed
+            # Completion status and stats are produced inside the savepoint so
+            # that any failure here rolls back the inserted rows too.
             completed_ts = _utc_now()
             update_run_status(conn, run_id, "completed", completed_at=completed_ts)
-            conn.commit()
-
             stats = fetch_speed_observation_stats(conn, run_id)
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            conn.commit()
 
             return {
                 "run_id": run_id,

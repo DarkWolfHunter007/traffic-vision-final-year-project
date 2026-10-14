@@ -537,8 +537,31 @@ def test_n1_real_slow_motion_preserved() -> None:
         assert o.speed_mps == pytest.approx(0.3, abs=1e-3)
 
 
+@pytest.mark.parametrize("fps", [30, 60])
+@pytest.mark.parametrize("smoothing", ["moving_average", "none"])
+def test_n4_short_post_gap_segment_jitter_is_valid_zero(fps: int, smoothing: str) -> None:
+    pre = [(i / fps, 5.0, 10.0) for i in range(5)]
+    t0 = 5.0
+    post = [(t0 + i / fps, 5.0 + (0.03 if i % 2 else -0.03), 10.0) for i in range(10)]
+    obs = _run(_traj_from_world(pre + post), {"speed": {"smoothing_method": smoothing}})
+    assert obs[5].status == STATUS_UNAVAILABLE
+    for o in obs[6:]:
+        assert o.status == STATUS_VALID and o.speed_mps == 0.0
+
+
+@pytest.mark.parametrize("fps", [30, 60])
+def test_n4_short_post_gap_real_motion_preserved(fps: int) -> None:
+    pre = [(i / fps, 5.0, 1.0 + 2.0 * i / fps) for i in range(5)]
+    t0 = 5.0
+    post = [(t0 + i / fps, 5.0, 1.0 + 2.0 * (t0 + i / fps)) for i in range(10)]
+    obs = _run(_traj_from_world(pre + post), {"speed": {"smoothing_method": "none"}})
+    for o in obs[6:]:
+        assert o.status == STATUS_VALID
+        assert o.speed_mps == pytest.approx(2.0, abs=1e-3)
+
+
 def test_d3_raw_spike_marks_affected_outputs_invalid() -> None:
-    # 1 m/s steady with a single 20 m raw jump in one 30 fps step (600 m/s raw)
+    # 1 m/s steady with a single 2 m raw jump in one 30 fps step (600 m/s raw)
     samples = []
     for i in range(30):
         y = 1.0 + 0.03 * i + (0.0 if i < 15 else 2.0)
