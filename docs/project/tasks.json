@@ -18,7 +18,7 @@
         "Y": "Tasks added, removed or re-ordered.",
         "Z": "Status updates, evidence, wording."
       },
-      "current_version": "v0.6.4"
+      "current_version": "v0.6.5"
     },
     "history": {
       "v0.1.0": "2026-10-14: Ledger created from HANDOFF.md, the 14 Oct addendum, the consistency-fix list and the planning conversation.",
@@ -30,7 +30,8 @@
       "v0.6.1": "2026-10-14: T52 extended from the read-only viewer to the local web app (workbench) with pipeline runner and editors for counting lines, ground points, the phase log and settings; wording and evidence updated.",
       "v0.6.2": "2026-10-14: user instruction: the app runs without AI help and does not include the AI rules; T52 updated (Home page from the app's own files replaces the ledger page).",
       "v0.6.3": "2026-10-14: T11 note: far vehicles in 4K are missed at imgsz 1280; tiling preview and offline Ultralytics added to the app. O7 not decided.",
-      "v0.6.4": "2026-10-14: every pipeline block built (E review to M comparison) with open decisions as required settings and register gaps reported; app pages for review, manual counts, alternatives and settings files. Task statuses unchanged except T51/T52 evidence."
+      "v0.6.4": "2026-10-14: every pipeline block built (E review to M comparison) with open decisions as required settings and register gaps reported; app pages for review, manual counts, alternatives and settings files. Task statuses unchanged except T51/T52 evidence.",
+      "v0.6.5": "2026-10-14: T11 note: slicing run from the app, FP32 chosen on the GTX 1650 (FP16 3.5x slower, same boxes). O7 still open."
     },
     "review_order": ["T44", "T38", "T41", "T42", "T43", "T24", "T49", "T50", "T01", "T02", "T46", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T48", "T11", "T12", "T13", "T14", "T51", "T52", "T45", "T15", "T16", "T18", "T17", "T19", "T20", "T21", "T22", "T47", "T23", "T25", "T26", "T27", "T28", "T29", "T30", "T31", "T32", "T33", "T36", "T34", "T35", "T37", "T39", "T40"],
     "documents": {
@@ -344,8 +345,8 @@
       "done_when": "Findings recorded, free-left presence noted, and O7, O9 and O10 put to the user for decision",
       "status": "PENDING",
       "evidence": "",
-      "notes": "Pretrained COCO models have no auto-rickshaw class. Expect autos to be mislabelled. Finding on IMG_1480 (4K, yolo11m, 14 Oct 2026, not yet checked by eye): with imgsz 1280 no detection with confidence >= 0.5 lies in the top 350 px (far approach). On one frame, confident boxes went from 30 (whole frame only) to 57-63 with 4 tiles on the top half and 63 with an 8-tile grid; in the far third from 13 to 33-36. Measured time per frame (6 frames, FP32): 0.09 s whole frame, 0.28 s with 2 far-half tiles, 1.27 s with 8 tiles. More boxes are not yet shown to be correct (possible doubles at tile edges). Tiling stays open (O7); the app's Settings page previews it on any frame.",
-      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review", "v0.6.3 2026-10-14: note added: 4K tiling finding and the preview tool; status unchanged"]
+      "notes": "Pretrained COCO models have no auto-rickshaw class. Expect autos to be mislabelled. Finding on IMG_1480 (4K, yolo11m, 14 Oct 2026, not yet checked by eye): with imgsz 1280 no detection with confidence >= 0.5 lies in the top 350 px (far approach). On one frame, confident boxes went from 30 (whole frame only) to 57-63 with 4 tiles on the top half and 63 with an 8-tile grid; in the far third from 13 to 33-36. Measured time per frame (6 frames, FP32): 0.09 s whole frame, 0.28 s with 2 far-half tiles, 1.27 s with 8 tiles. More boxes are not yet shown to be correct (possible doubles at tile edges). Tiling stays open (O7); the app's Settings page previews it on any frame. Run from the app on IMG_1480 (14 Oct 2026): slicing over the whole frame (8 tiles of 1280 px, 256 px overlap, tile-edge halves merged) gave 98 tracks against 43 without it. On the GTX 1650, FP16 took 4.5 s per 4K frame and FP32 1.3 s with identical boxes, so detection uses half: false. At 1.3 s per processed frame, a 1.5 h slot at 15 fps is about 29 h of detection: the slicing layout and process_fps decide whether that is overnight or longer (O7). Counts not yet checked against manual counts.",
+      "history": ["v0.3.0 2026-10-14: wording, status or notes changed after the Opus 5.5 review", "v0.6.3 2026-10-14: note added: 4K tiling finding and the preview tool; status unchanged", "v0.6.5 2026-10-14: note added: slicing run and FP16/FP32 timing; status unchanged"]
     },
     "T12": {
       "title": "Define the class list and labelling rules",

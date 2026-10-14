@@ -124,7 +124,8 @@ def router(root: Path) -> APIRouter:
         d = run_dir(slot, video)
         meta = run_meta(d)
         vf = inside(root, meta["video_file"])
-        params = meta.get("parameters", {})
+        # The frame stride is a detection setting; tracks.run.json does not repeat it.
+        params = (read_json(d / "detections.run.json") or meta).get("parameters", {})
         files = sorted(p.name for p in d.iterdir() if p.is_file())
         return {
             "slot": slot, "video": video, "fps": meta["fps"], "width": meta["width"], "height": meta["height"],
