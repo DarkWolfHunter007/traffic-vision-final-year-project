@@ -585,3 +585,23 @@ def test_d5_smoothing_window_null_when_not_applied() -> None:
     ):
         assert all(o.smoothing_window is None for o in _run(_traj_from_world(samples), cfg))
     assert all(o.smoothing_window == 0.5 for o in _run(_traj_from_world(samples)))
+
+
+@pytest.mark.parametrize("fps", [30, 60])
+@pytest.mark.parametrize("speed", [2.0, 4.0])
+@pytest.mark.parametrize("npts", [2, 3, 4])
+@pytest.mark.parametrize("smoothing", ["none", "moving_average"])
+def test_ultra_short_post_gap_motion_never_valid_zero(
+    fps: int, speed: float, npts: int, smoothing: str
+) -> None:
+    pre = [(i / fps, 5.0, 1.0 + speed * i / fps) for i in range(5)]
+    t0 = 5.0
+    post = [(t0 + i / fps, 5.0, 1.0 + speed * (t0 + i / fps)) for i in range(npts)]
+    cfg = {"speed": {"smoothing_method": smoothing}}
+    obs = _run(_traj_from_world(pre + post), cfg)
+    for o in obs[6:]:
+        if o.status == STATUS_VALID:
+            assert o.speed_mps == pytest.approx(speed, abs=1e-3)
+        else:
+            assert o.status == STATUS_UNAVAILABLE
+            assert o.speed_mps is None and o.speed_kmh is None

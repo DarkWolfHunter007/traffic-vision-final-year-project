@@ -217,8 +217,8 @@ def run_speed_estimation(
             }
 
         except Exception as err:
-            # Undo only this service's inserts; unrelated pending work on a
-            # caller-owned connection is preserved.
+            # Undo only this service's inserts. Any caller pending work was
+            # already committed at entry, so it is not affected.
             try:
                 conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
                 conn.execute(f"RELEASE SAVEPOINT {savepoint}")

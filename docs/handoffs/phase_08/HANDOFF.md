@@ -105,14 +105,17 @@ Validated in `backend/config.py`:
 Running `uv run pytest -q`:
 
 ```text
-........................................................................ [ 25%]
-........................................................................ [ 51%]
-........................................................................ [ 77%]
-..............................................................           [100%]
-285 passed in 33.02s
+........................................................................ [ 23%]
+........................................................................ [ 46%]
+........................................................................ [ 69%]
+........................................................................ [ 93%]
+.....................                                                    [100%]
+309 passed in 26.01s
 ```
 
-Phase 08 tests: `tests/test_speed.py` and `tests/test_speed_service.py` (value-checking tests for D1-D9, N1, N2, N4, N5).
+Phase 08 tests: `tests/test_speed.py` and `tests/test_speed_service.py` (value-checking tests for D1-D9, N1, N2, N4, N5, plus parametrised ultra-short post-gap segment tests).
+
+Ultra-short segment rule: for gap-free segments with span < 0.5 s, valid 0.0 is reported only if displacement < min_displacement_m AND (the step speed is < min_displacement_m/0.5 s OR the segment has >= 5 points, so oscillating jitter is observable). Otherwise, with displacement below the threshold but fewer than 5 points and step speed at/above the threshold, jitter and motion are indistinguishable and the step is 'unavailable' with NULL speeds, never a fabricated valid 0.0.
 
 ---
 

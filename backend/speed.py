@@ -15,7 +15,14 @@ Rules (frame-rate independent):
   measured over a reference span of at least STATIONARY_REFERENCE_S seconds of track
   time (clipped to the gap-free segment) is below min_displacement_m / STATIONARY_REFERENCE_S.
   Using a time-based span (not a single step) keeps jitter at segment edges at 0.0
-  regardless of frame rate. Segments shorter than the reference use the whole segment.
+  regardless of frame rate. Segments shorter than the reference use the whole segment
+  and compare total displacement with min_displacement_m. Over such a tiny span jitter
+  and slow real motion are indistinguishable when the segment has fewer than
+  MIN_POINTS_SHORT_SEGMENT points: if displacement is below min_displacement_m but the
+  step speed is at/above min_displacement_m / STATIONARY_REFERENCE_S, the step is
+  'unavailable' with NULL speeds (never a fabricated valid 0.0, never a guessed speed).
+  Segments with at least MIN_POINTS_SHORT_SEGMENT points apply the displacement rule
+  (valid 0.0) because oscillating jitter is then observable.
 - Outliers: the raw unsmoothed step speed is also compared with max_plausible_speed_mps;
   every output whose smoothing window contains a flagged step is marked invalid.
 - smoothing_window is NULL when smoothing is not applied (method 'none' or window 0).
@@ -40,6 +47,7 @@ STATUS_INVALID = "invalid"
 STATUS_UNAVAILABLE = "unavailable"
 
 STATIONARY_REFERENCE_S = 0.5
+MIN_POINTS_SHORT_SEGMENT = 5
 
 VALID_SPEED_STATUSES: frozenset[str] = frozenset(
     {STATUS_VALID, STATUS_INVALID, STATUS_UNAVAILABLE}
@@ -435,6 +443,30 @@ def estimate_speeds_for_trajectory(
             # displacement directly so the effective threshold never drops
             # below min_displacement_m.
             stationary = ref_disp < min_displacement_m
+            if (
+                stationary
+                and len(seg_of[i]) < MIN_POINTS_SHORT_SEGMENT
+                and disp_m / dt >= min_displacement_m / STATIONARY_REFERENCE_S
+            ):
+                # Ambiguous: jitter vs real motion cannot be told apart.
+                observations.append(
+                    SpeedObservation(
+                        speed_observation_id=str(uuid4()),
+                        run_id=run_id,
+                        video_id=trajectory.video_id,
+                        track_id=trajectory.track_id,
+                        timestamp_s=t_curr,
+                        speed_mps=None,
+                        speed_kmh=None,
+                        calibration_id=calibration_id,
+                        status=STATUS_UNAVAILABLE,
+                        smoothing_window=window_out,
+                        ground_point_method=ground_point_method,
+                        world_x=curr_wx,
+                        world_y=curr_wy,
+                    )
+                )
+                continue
         else:
             stationary = ref_disp / ref_span < (min_displacement_m / STATIONARY_REFERENCE_S)
 
