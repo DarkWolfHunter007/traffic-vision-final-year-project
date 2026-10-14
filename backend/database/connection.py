@@ -63,6 +63,44 @@ def bootstrap_database(database_path: Path) -> str:
     return version
 
 
+def migrate_database(database_path: Path) -> str:
+    """Explicitly upgrade an existing database to the current canonical schema version."""
+    version = schema_version()
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    with connect(database_path) as connection:
+        existing_tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            )
+        }
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (schema_version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"
+        )
+
+        # Check and migrate columns in crossing_events
+        if "crossing_events" in existing_tables:
+            cols = {row[1] for row in connection.execute("PRAGMA table_info(crossing_events)")}
+            if "deduplicated" not in cols:
+                connection.execute("ALTER TABLE crossing_events ADD COLUMN deduplicated INTEGER NOT NULL DEFAULT 0")
+
+        # Check and migrate columns in traffic_volume_bins
+        if "traffic_volume_bins" in existing_tables:
+            cols = {row[1] for row in connection.execute("PRAGMA table_info(traffic_volume_bins)")}
+            if "observed_duration_s" not in cols:
+                connection.execute("ALTER TABLE traffic_volume_bins ADD COLUMN observed_duration_s REAL")
+
+        # Execute full schema to create any new tables (e.g. video_segments) and indexes
+        connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        connection.execute(
+            "INSERT OR IGNORE INTO schema_migrations (schema_version, applied_at) VALUES (?, ?)",
+            (version, datetime.now(UTC).isoformat()),
+        )
+        connection.commit()
+    return version
+
+
+
 @contextmanager
 def database_connection(database_path: Path) -> Iterator[sqlite3.Connection]:
     connection = connect(database_path)

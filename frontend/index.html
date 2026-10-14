@@ -3,13 +3,268 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Traffic Vision</title>
+    <title>Traffic Vision — Research Dashboard</title>
+    <link rel="stylesheet" href="style.css">
   </head>
   <body>
-    <main>
-      <h1>Traffic Vision</h1>
-      <p>Phase 01 foundation: video ingestion, provenance, and timestamp integrity.</p>
-      <p>Analytics and dashboard functionality are intentionally unavailable until later phases.</p>
+    <header class="app-header">
+      <div class="header-content">
+        <div class="branding">
+          <h1>Traffic Vision</h1>
+          <span class="subhead">Status-Aware Research Dashboard &amp; Analysis Interface</span>
+        </div>
+        <div class="run-control-bar" role="region" aria-label="Run selection and export controls">
+          <label for="run-selector" class="control-label">Processing Run:</label>
+          <select id="run-selector" class="run-select" aria-label="Select Processing Run">
+            <option value="" disabled selected>Loading runs...</option>
+          </select>
+          <button id="btn-export" class="btn btn-primary" type="button" aria-label="Trigger deterministic export">
+            Export Run Data
+          </button>
+        </div>
+      </div>
+      <div id="export-status" class="export-banner" aria-live="polite"></div>
+    </header>
+
+    <main class="dashboard-grid">
+      <!-- 1. Video Metadata Panel -->
+      <section id="video-metadata" class="panel" aria-labelledby="heading-video-meta">
+        <div id="panel-video-metadata" class="panel-inner">
+          <h2 id="heading-video-meta" class="panel-title">Video Metadata</h2>
+          <div class="data-grid" id="video-meta-content">
+            <div class="data-item"><span class="label">Video ID:</span><span class="val" id="vm-video-id">Unavailable</span></div>
+            <div class="data-item"><span class="label">Filename:</span><span class="val" id="vm-filename">Unavailable</span></div>
+            <div class="data-item"><span class="label">SHA-256:</span><span class="val hash-val" id="vm-sha256">Unavailable</span></div>
+            <div class="data-item"><span class="label">Resolution:</span><span class="val" id="vm-resolution">Unavailable</span></div>
+            <div class="data-item"><span class="label">Nominal FPS:</span><span class="val" id="vm-fps">Unavailable</span></div>
+            <div class="data-item"><span class="label">Duration:</span><span class="val" id="vm-duration">Unavailable</span></div>
+            <div class="data-item"><span class="label">Frame Count:</span><span class="val" id="vm-frames">Unavailable</span></div>
+            <div class="data-item"><span class="label">VFR:</span><span class="val" id="vm-vfr">Unavailable</span></div>
+            <div class="data-item"><span class="label">Wall Clock Start:</span><span class="val" id="vm-wall-clock">Unavailable</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Validation Status Panel -->
+      <section id="validation-status" class="panel" aria-labelledby="heading-validation-status">
+        <div id="panel-validation-status" class="panel-inner">
+          <h2 id="heading-validation-status" class="panel-title">Validation Status</h2>
+          <p class="panel-desc">Scientific research status indicators across pipeline stages. Null or unmeasured components are marked Unavailable.</p>
+          <div class="status-grid" id="val-status-content">
+            <div class="status-item">
+              <span class="status-domain">Camera Calibration</span>
+              <span id="st-calibration" class="status-badge status-unavailable">Unavailable</span>
+            </div>
+            <div class="status-item">
+              <span class="status-domain">ByteTrack Tracking</span>
+              <span id="st-tracking" class="status-badge status-unavailable">Unavailable</span>
+            </div>
+            <div class="status-item">
+              <span class="status-domain">Calibrated Speed</span>
+              <span id="st-speed" class="status-badge status-unavailable">Unavailable</span>
+            </div>
+            <div class="status-item">
+              <span class="status-domain">Stopped &amp; Queue</span>
+              <span id="st-queue" class="status-badge status-unavailable">Unavailable</span>
+            </div>
+            <div class="status-item">
+              <span class="status-domain">15-Minute Volume</span>
+              <span id="st-counting" class="status-badge status-unavailable">Unavailable</span>
+            </div>
+            <div class="status-item">
+              <span class="status-domain">Ground Truth Reference</span>
+              <span id="st-ground-truth" class="status-badge status-unavailable">Unavailable</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Tracking Quality Panel -->
+      <section id="tracking-quality" class="panel" aria-labelledby="heading-tracking-quality">
+        <div id="panel-tracking-quality" class="panel-inner">
+          <h2 id="heading-tracking-quality" class="panel-title">Tracking Quality</h2>
+          <div class="metric-row">
+            <div class="metric-card">
+              <span class="metric-label">Total Tracks</span>
+              <span class="metric-value" id="tq-total-tracks">Unavailable</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Observations</span>
+              <span class="metric-value" id="tq-observations">Unavailable</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Calibrated Coordinates</span>
+              <span class="metric-value" id="tq-calibrated-pts">Unavailable</span>
+            </div>
+          </div>
+          <h3 class="sub-heading">Trajectory Status Distribution</h3>
+          <div class="status-distribution" id="tq-status-distribution">
+            <div class="dist-item"><span class="status-badge status-valid">Complete</span> <span class="dist-count" id="tq-complete">Unavailable</span></div>
+            <div class="dist-item"><span class="status-badge status-unvalidated">Active</span> <span class="dist-count" id="tq-active">Unavailable</span></div>
+            <div class="dist-item"><span class="status-badge status-unavailable">Fragmented</span> <span class="dist-count" id="tq-fragmented">Unavailable</span></div>
+            <div class="dist-item"><span class="status-badge status-invalid">Invalid</span> <span class="dist-count" id="tq-invalid">Unavailable</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Counts and 15-Minute Volume Bins Panel -->
+      <section id="counts-bins" class="panel panel-span-2" aria-labelledby="heading-counts-bins">
+        <div id="panel-counts-bins" class="panel-inner">
+          <div id="volume-bins">
+            <div class="panel-header-row">
+              <h2 id="heading-counts-bins" class="panel-title">Traffic Volume &amp; 15-Minute Bins</h2>
+              <div class="summary-pill" id="bins-summary-pill">0 bins recorded</div>
+            </div>
+
+            <!-- Inline SVG bar chart -->
+            <figure class="chart-container" aria-labelledby="chart-title">
+              <figcaption id="chart-title" class="chart-title">Observed Vehicle Count per 15-Minute Interval</figcaption>
+              <div class="svg-wrapper">
+                <svg id="volume-chart" viewBox="0 0 760 180" role="img" aria-label="15-minute volume bar chart">
+                  <text x="380" y="90" text-anchor="middle" fill="#64748b" font-size="14">No volume bin data available</text>
+                </svg>
+              </div>
+            </figure>
+
+            <!-- Table of volume bins -->
+            <div class="table-wrapper">
+              <table class="data-table" aria-label="15-minute volume bins table">
+                <thead>
+                  <tr>
+                    <th scope="col">Bin Start</th>
+                    <th scope="col">Obs. Duration</th>
+                    <th scope="col">Approach</th>
+                    <th scope="col">Movement</th>
+                    <th scope="col">Class</th>
+                    <th scope="col">Count</th>
+                    <th scope="col">Extrapolated VPH</th>
+                  </tr>
+                </thead>
+                <tbody id="bins-table-body">
+                  <tr><td colspan="7" class="empty-cell">Select a run with counting output to display volume bins.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Speed Summary Panel -->
+      <section id="speed-summary" class="panel" aria-labelledby="heading-speed-summary">
+        <div id="panel-speed-summary" class="panel-inner">
+          <h2 id="heading-speed-summary" class="panel-title">Speed Summary</h2>
+          <div class="metric-row">
+            <div class="metric-card">
+              <span class="metric-label">Mean Speed (km/h)</span>
+              <span class="metric-value" id="spd-mean-kmh"><span class="status-badge status-unavailable">Unavailable</span></span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Max Speed (km/h)</span>
+              <span class="metric-value" id="spd-max-kmh"><span class="status-badge status-unavailable">Unavailable</span></span>
+            </div>
+          </div>
+          <div class="data-grid compact-grid">
+            <div class="data-item"><span class="label">Total Observations:</span><span class="val" id="spd-total">Unavailable</span></div>
+            <div class="data-item"><span class="label">Valid Observations:</span><span class="val" id="spd-valid">Unavailable</span></div>
+            <div class="data-item"><span class="label">Invalid Observations:</span><span class="val" id="spd-invalid">Unavailable</span></div>
+            <div class="data-item"><span class="label">Unavailable Observations:</span><span class="val" id="spd-unavailable">Unavailable</span></div>
+            <div class="data-item"><span class="label">Mean Speed (m/s):</span><span class="val" id="spd-mean-mps">Unavailable</span></div>
+            <div class="data-item"><span class="label">Max Speed (m/s):</span><span class="val" id="spd-max-mps">Unavailable</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. Queue and Stop Events Panel -->
+      <section id="queue-stop-events" class="panel" aria-labelledby="heading-queue-stop">
+        <div id="panel-queue-summary" class="panel-inner">
+          <div id="queue-summary">
+            <h2 id="heading-queue-stop" class="panel-title">Queue &amp; Stop Events</h2>
+            <div class="metric-row">
+              <div class="metric-card">
+                <span class="metric-label">Mean Queue Length</span>
+                <span class="metric-value" id="que-mean-m"><span class="status-badge status-unavailable">Unavailable</span></span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Max Queue Length</span>
+                <span class="metric-value" id="que-max-m"><span class="status-badge status-unavailable">Unavailable</span></span>
+              </div>
+            </div>
+            <div class="data-grid compact-grid">
+              <div class="data-item"><span class="label">Stop Events:</span><span class="val" id="que-stops-total">Unavailable</span></div>
+              <div class="data-item"><span class="label">Valid Stops:</span><span class="val" id="que-stops-valid">Unavailable</span></div>
+              <div class="data-item"><span class="label">Mean Stop Duration:</span><span class="val" id="que-stop-mean-dur">Unavailable</span></div>
+              <div class="data-item"><span class="label">Queue Evaluations:</span><span class="val" id="que-total">Unavailable</span></div>
+              <div class="data-item"><span class="label">Formed Queues:</span><span class="val" id="que-formed">Unavailable</span></div>
+              <div class="data-item"><span class="label">Max Queued Vehicles:</span><span class="val" id="que-max-veh">Unavailable</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. Review Status Panel -->
+      <section id="review-status" class="panel" aria-labelledby="heading-review-status">
+        <div id="panel-review-status" class="panel-inner">
+          <h2 id="heading-review-status" class="panel-title">Manual Review Status</h2>
+          <div class="metric-row">
+            <div class="metric-card">
+              <span class="metric-label">Total Reviews</span>
+              <span class="metric-value" id="rev-total">Unavailable</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Approved</span>
+              <span class="metric-value" id="rev-approved">Unavailable</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Pending</span>
+              <span class="metric-value" id="rev-pending">Unavailable</span>
+            </div>
+          </div>
+          <div class="data-grid compact-grid">
+            <div class="data-item"><span class="label">Rejected Reviews:</span><span class="val" id="rev-rejected">Unavailable</span></div>
+            <div class="data-item"><span class="label">Class Corrections:</span><span class="val" id="rev-class-corr">Unavailable</span></div>
+            <div class="data-item"><span class="label">BBox Corrections:</span><span class="val" id="rev-bbox-corr">Unavailable</span></div>
+            <div class="data-item"><span class="label">Snippets Generated:</span><span class="val" id="rev-snippets">Unavailable</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 8. Ground-Truth Comparison Panel -->
+      <section id="ground-truth-comparison" class="panel panel-span-2" aria-labelledby="heading-gt-comp">
+        <div id="panel-ground-truth" class="panel-inner">
+          <div class="panel-header-row">
+            <h2 id="heading-gt-comp" class="panel-title">Ground-Truth Reference Comparison</h2>
+            <span id="gt-status-badge" class="status-badge status-unavailable">Unavailable</span>
+          </div>
+          <p id="gt-message" class="panel-desc">Comparison against manual reference counts for evaluation clips. No automated pass/fail declaration.</p>
+          <div class="table-wrapper">
+            <table class="data-table" aria-label="Ground truth comparison table">
+              <thead>
+                <tr>
+                  <th scope="col">Segment / Clip</th>
+                  <th scope="col">Approach</th>
+                  <th scope="col">Movement</th>
+                  <th scope="col">Class</th>
+                  <th scope="col">Counted</th>
+                  <th scope="col">Observed</th>
+                  <th scope="col">Abs Error</th>
+                  <th scope="col">Pct Error</th>
+                  <th scope="col">Tolerance</th>
+                  <th scope="col">Row Status</th>
+                </tr>
+              </thead>
+              <tbody id="gt-table-body">
+                <tr><td colspan="9" class="empty-cell">No ground-truth comparison dataset configured for this run.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </main>
+
+    <footer class="app-footer">
+      <p>Traffic Vision — Offline computer-vision research subsystem for Pattom Intersection study. All metrics are non-fabricated research outputs.</p>
+    </footer>
+
+    <script type="module" src="app.js"></script>
   </body>
 </html>

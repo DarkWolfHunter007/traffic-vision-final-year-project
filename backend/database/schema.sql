@@ -123,7 +123,8 @@ CREATE TABLE IF NOT EXISTS crossing_events (
     direction TEXT,
     approach TEXT,
     movement TEXT,
-    line_config_version TEXT NOT NULL
+    line_config_version TEXT NOT NULL,
+    deduplicated INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS traffic_volume_bins (
@@ -133,6 +134,7 @@ CREATE TABLE IF NOT EXISTS traffic_volume_bins (
     line_id TEXT NOT NULL REFERENCES counting_lines(line_id),
     bin_start_s REAL NOT NULL,
     bin_duration_s REAL NOT NULL DEFAULT 900,
+    observed_duration_s REAL,
     vehicle_class TEXT,
     approach TEXT,
     movement TEXT,
@@ -222,6 +224,17 @@ CREATE TABLE IF NOT EXISTS manual_reviews (
     snippet_path TEXT
 );
 
+CREATE TABLE IF NOT EXISTS video_segments (
+    segment_id TEXT PRIMARY KEY,
+    video_id TEXT NOT NULL REFERENCES videos(video_id),
+    start_s REAL NOT NULL,
+    end_s REAL NOT NULL,
+    start_frame INTEGER NOT NULL,
+    end_frame INTEGER NOT NULL,
+    label TEXT,
+    condition_notes TEXT
+);
+
 CREATE TABLE IF NOT EXISTS ground_truth_sets (
     ground_truth_set_id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -233,7 +246,7 @@ CREATE TABLE IF NOT EXISTS ground_truth_sets (
 CREATE TABLE IF NOT EXISTS ground_truth_counts (
     ground_truth_count_id TEXT PRIMARY KEY,
     ground_truth_set_id TEXT NOT NULL REFERENCES ground_truth_sets(ground_truth_set_id),
-    video_segment_id TEXT NOT NULL,
+    video_segment_id TEXT NOT NULL REFERENCES video_segments(segment_id),
     approach TEXT NOT NULL,
     movement TEXT NOT NULL,
     vehicle_class TEXT,
