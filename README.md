@@ -37,7 +37,12 @@ This is a fresh start (14 Oct 2026) built only from the documents in `docs/proje
 | F Ground mapping and drift (FR-24) | `pattom.ground` | Done: homography per approach, check points required, error in metres, landmark drift check |
 | F Counting (FR-09) | `pattom.counting` | Done: stop and arrival lines, one-way crossings, movements incl. free left, interval counts |
 | F Capacity and V/C (FR-13) | `pattom.capacity` | Done: SP 41 section 7.6; PCU table must be named (O3) |
-| E review, F signal phases / queue / stopped delay, G-M | | Not started |
+| F Signal phases (FR-10) | `pattom.signals` | Done: signal log read from the footage, cycles and green/amber/red |
+| F Stopped delay and queue (FR-11, FR-12) | `pattom.delay` | Done: needs approved T46 definitions (O6), or runs as a labelled draft |
+| F Indicator table (T22) | `pattom.indicators` | Done: PCU/h, SP 41 capacity, V/C, delay, queue per approach and interval |
+| G Emissions phase 1 (FR-15, D13) | `pattom.emissions` | Done: idle CO2 from registered factors, "source not checked"; moving CO2 is a gap until ARAI is obtained |
+| G Congestion index (FR-14) | `pattom.congestion` | Done: formula from a versioned config; no default weights (O4) |
+| E review screen, H-M (problems, alternatives, MCE, SUMO) | | Not started |
 
 ## Setup
 
@@ -86,6 +91,18 @@ uv run pattom count runs/test/test_01/tracks.csv --interval-s 900  (configs/line
 ```
 
 Writes `crossings.csv` and `interval_counts.csv` (ARCHITECTURE 4.4). Examples: `calibration/ground.example.yaml`, `configs/lines.example.yaml`.
+
+## Delay, queue, V/C, emissions and congestion index
+
+```text
+uv run pattom signals configs/signal_log.csv
+uv run pattom delay runs/peak/p01/tracks.csv --signal-log configs/signal_log.csv   (add --draft before T46 is approved)
+uv run pattom emissions runs/peak/p01/vehicle_delay.csv
+uv run pattom indicators runs/peak/p01 --signal-log configs/signal_log.csv
+uv run pattom congestion runs/peak/p01/approach_indicators.csv
+```
+
+Outputs: `vehicle_delay.csv`, `stopped_delay.csv`, `queue.csv`, `emissions.csv`, `approach_indicators.csv`, `congestion_index.csv`, each with run metadata. Example configs are in `configs/*.example.yaml`; values marked `null` are open decisions and the run stops until they are filled.
 
 Originals go in `data/raw/` and are never written to. Each output gets a `.run.json` with the source SHA-256, settings and code revision.
 

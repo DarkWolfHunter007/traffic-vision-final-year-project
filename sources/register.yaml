@@ -110,10 +110,14 @@ values:
       car_petrol: 0.60
       car_diesel: 0.60
       bus_diesel: 0.90
+      medium_truck_diesel: 1.002
     unit: L/h
     source: kumar_2015_crri
     ref: abstract (per-class tables garbled in the copy read)
     status: reported
+    note: >-
+      medium_truck_diesel is CRRI's reported 167 mL per 10 min converted to L/h
+      (EMISSION_SOURCES.md section 1).
   fuel_co2_kg_per_l:
     value:
       petrol: 2.27193

@@ -1,0 +1,9 @@
+# Copy to configs/congestion.yaml. The congestion-index formula is OPEN (O4)
+# and needs the guide's approval. Weights are deliberately empty: the run
+# stops until they are filled in. Indicators and normalisation are a proposal.
+formula_version: draft-1
+approved: false
+indicators:
+  - {column: vc_ratio,             normalisation: reference, reference: 1.0, weight: null}
+  - {column: mean_stopped_delay_s, normalisation: minmax,                    weight: null}
+  - {column: max_queue_length_m,   normalisation: minmax,                    weight: null}

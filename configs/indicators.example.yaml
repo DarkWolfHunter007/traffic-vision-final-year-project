@@ -1,0 +1,12 @@
+# Copy to configs/indicators.yaml.
+pcu_table: null               # O3: table_3_1 or table_III_1 (SP 41); no default
+class_to_pcu_row:
+  two_wheeler: motorcycle_scooter
+  auto_rickshaw: auto_rickshaw
+  car: passenger_car
+  bus: truck_bus
+  truck: truck_bus
+volume_line_type: arrival     # arrival lines measure demand; stop lines measure discharge
+effective_green: displayed_green   # or green_plus_amber_minus_lost (SP 41 p. 78)
+approaches:
+  north: {width_m: null, gradient_pct: 0.0, signal_head: N}   # width measured on site

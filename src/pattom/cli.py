@@ -82,6 +82,37 @@ def _count(args) -> None:
     print(run_counting(Path(args.tracks), Path(args.lines), args.interval_s, args.offset_s))
 
 
+def _signals(args) -> None:
+    from pattom.signals import load_log, summary
+
+    print(json.dumps(summary(load_log(Path(args.log))), indent=2))
+
+
+def _delay(args) -> None:
+    from pattom.delay import run_delay_queue
+
+    print(run_delay_queue(Path(args.tracks), Path(args.definitions), args.interval_s,
+                          Path(args.signal_log) if args.signal_log else None, args.offset_s, args.draft))
+
+
+def _emissions(args) -> None:
+    from pattom.emissions import run_emissions
+
+    print(run_emissions(Path(args.vehicle_delay), Path(args.config), args.interval_s, args.offset_s))
+
+
+def _indicators(args) -> None:
+    from pattom.indicators import run_indicators
+
+    print(run_indicators(Path(args.run_dir), Path(args.config), Path(args.signal_log)))
+
+
+def _congestion(args) -> None:
+    from pattom.congestion import run_congestion
+
+    print(run_congestion(Path(args.indicators), Path(args.formula)))
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="pattom")
     sub = p.add_subparsers(required=True)
@@ -142,6 +173,37 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--interval-s", type=float, default=900.0, help="interval length (default 15 min)")
     s.add_argument("--offset-s", type=float, default=0.0, help="start of this file within its slot")
     s.set_defaults(func=_count)
+
+    s = sub.add_parser("signals", help="check a signal log read from the footage and summarise cycles")
+    s.add_argument("log")
+    s.set_defaults(func=_signals)
+
+    s = sub.add_parser("delay", help="stopped delay per vehicle and approach, and queue length at each green")
+    s.add_argument("tracks")
+    s.add_argument("--definitions", default=str(REPO_ROOT / "configs" / "definitions.yaml"))
+    s.add_argument("--signal-log", help="signal log CSV; needed for queue length")
+    s.add_argument("--interval-s", type=float, default=900.0)
+    s.add_argument("--offset-s", type=float, default=0.0)
+    s.add_argument("--draft", action="store_true", help="run with definitions not yet approved (rows say draft)")
+    s.set_defaults(func=_delay)
+
+    s = sub.add_parser("emissions", help="idle CO2 estimate from vehicle_delay.csv (registered factors only)")
+    s.add_argument("vehicle_delay")
+    s.add_argument("--config", default=str(REPO_ROOT / "configs" / "emissions.yaml"))
+    s.add_argument("--interval-s", type=float, default=900.0)
+    s.add_argument("--offset-s", type=float, default=0.0)
+    s.set_defaults(func=_emissions)
+
+    s = sub.add_parser("indicators", help="volume, SP 41 capacity, V/C, delay and queue per approach and interval")
+    s.add_argument("run_dir")
+    s.add_argument("--signal-log", required=True)
+    s.add_argument("--config", default=str(REPO_ROOT / "configs" / "indicators.yaml"))
+    s.set_defaults(func=_indicators)
+
+    s = sub.add_parser("congestion", help="congestion index from approach_indicators.csv")
+    s.add_argument("indicators")
+    s.add_argument("--formula", default=str(REPO_ROOT / "configs" / "congestion.yaml"))
+    s.set_defaults(func=_congestion)
 
     args = p.parse_args(argv)
     args.func(args)

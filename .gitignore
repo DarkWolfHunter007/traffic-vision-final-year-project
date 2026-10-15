@@ -20,3 +20,7 @@ configs/detection.yaml
 configs/tracker.yaml
 configs/lines.yaml
 calibration/ground.yaml
+configs/definitions.yaml
+configs/emissions.yaml
+configs/indicators.yaml
+configs/congestion.yaml

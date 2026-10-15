@@ -1,0 +1,10 @@
+# Copy to configs/emissions.yaml. Phase 1 (D13): CO2 from idle time.
+# The category per class is an ASSUMPTION: video cannot show fuel type.
+# Category names must exist in sources/register.yaml (idle_fuel_l_per_h).
+method_id: idle_co2_v1
+class_to_category:
+  two_wheeler:   {idle_fuel: motorcycle_petrol,       fuel: petrol}
+  auto_rickshaw: {idle_fuel: three_wheeler_petrol_2s, fuel: petrol}
+  car:           {idle_fuel: car_petrol,              fuel: petrol}
+  bus:           {idle_fuel: bus_diesel,              fuel: diesel}
+  truck:         {idle_fuel: medium_truck_diesel,     fuel: diesel}

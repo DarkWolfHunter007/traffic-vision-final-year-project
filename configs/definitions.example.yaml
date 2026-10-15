@@ -1,0 +1,13 @@
+# Copy to configs/definitions.yaml. These are the operational definitions of
+# task T46 (open decision O6). Nothing here has a default: fill every value,
+# get it approved, then set approved: true and a new definition_version.
+definition_version: draft-1
+approved: false
+stopped_speed_kmh: null      # O6: speed at or below which a vehicle counts as stopped
+speed_window_s: null         # centred window for speed from ground positions
+max_gap_s: null              # longest gap between track points still counted as stopped time
+approaches:
+  north:
+    zone_px: [[1500, 300], [2100, 300], [2100, 700], [1500, 700]]   # placeholder
+    stop_point_m: [0.0, 0.0]                                        # placeholder
+    signal_head: N

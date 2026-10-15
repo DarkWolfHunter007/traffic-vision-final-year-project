@@ -1,0 +1,5 @@
+time_s,signal_head,state
+0.0,N,green
+50.0,N,amber
+53.0,N,red
+120.0,N,green
