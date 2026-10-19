@@ -1,0 +1,11 @@
+{
+  "nodes": {
+    "cfr":    {"type": "cfr",    "params": {"video": "data/raw/IMG_1480.MOV", "out": "data/cfr/IMG_1480.mp4", "slot": "test"}, "pos": [40, 60]},
+    "detect": {"type": "detect", "params": {"slot": "test"}, "pos": [300, 60]},
+    "track":  {"type": "track",  "params": {}, "pos": [560, 60]}
+  },
+  "edges": [
+    {"from": "cfr.video", "to": "detect.video"},
+    {"from": "detect.detections", "to": "track.detections"}
+  ]
+}
