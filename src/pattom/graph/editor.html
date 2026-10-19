@@ -1467,6 +1467,8 @@ function openPreviewModal(nodeId) {
       }
       body.appendChild(wrap);
     }
+  }).catch(err => {
+    body.innerHTML = `<div style="padding:20px;color:var(--warn);">Could not load the preview (${err.message}). Restart the editor (close the old terminal window, run uv run pattom editor) and refresh the page.</div>`;
   });
 }
 
