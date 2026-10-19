@@ -1342,7 +1342,7 @@ function openPreviewModal(nodeId) {
             ctx.stroke();
             ctx.fillStyle = "#10b981";
             ctx.font = "bold 12px sans-serif";
-            ctx.fillText(`${line.line_name} (${line.movement})`, p1[0] * scaleX + 5, p1[1] * scaleY - 5);
+            ctx.fillText(`${line.name} (${line.type}, ${line.approach})`, p1[0] * scaleX + 5, p1[1] * scaleY - 5);
           });
         }
 

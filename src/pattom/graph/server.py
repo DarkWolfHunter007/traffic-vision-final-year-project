@@ -367,6 +367,18 @@ def generate_node_preview(node_id: str, spec: dict[str, Any] | None = None) -> d
                 except Exception:
                     pass
             res["lines"] = lines_data
+            # Boxes under the lines, from the tracks file of the same run
+            trk_file = p.parent / "tracks.csv"
+            if trk_file.is_file():
+                pts = []
+                with open(trk_file, newline="", encoding="utf-8") as f:
+                    for row in csv.DictReader(f):
+                        pts.append({
+                            "t": float(row["time_s"]), "id": int(row["track_id"]),
+                            "c": row.get("class", "unknown"),
+                            "box": [round(float(row[k]), 1) for k in ("x1", "y1", "x2", "y2")],
+                        })
+                res["points"] = pts
 
             # Read interval counts table
             table = []
