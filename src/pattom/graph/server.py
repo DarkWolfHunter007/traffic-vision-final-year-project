@@ -40,10 +40,12 @@ from pattom.graph.engine import (
     run_graph,
     validate_graph,
 )
+from pattom.graph import calibration as calib
 from pattom.graph.nodes import NODE_TYPES
 from pattom.paths import CALIBRATION, REPO_ROOT
 
 EDITOR_HTML = Path(__file__).with_name("editor.html")
+CALIBRATE_HTML = Path(__file__).with_name("calibrate.html")
 
 
 def safe_repo_path(raw_path: str) -> Path | None:
@@ -565,6 +567,33 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, EDITOR_HTML.read_bytes(), "text/html; charset=utf-8")
 
+        elif route == "/calibrate":
+            if not CALIBRATE_HTML.is_file():
+                self._send(500, b"calibrate.html missing")
+                return
+            self._send(200, CALIBRATE_HTML.read_bytes(), "text/html; charset=utf-8")
+
+        elif route == "/calib/state":
+            self._json(200, calib.state())
+
+        elif route == "/frame":
+            vid = safe_repo_path(qs.get("video", [""])[0])
+            try:
+                if not vid:
+                    raise calib.CalibrationError("Video path is outside the project")
+                jpg, w, h = calib.read_frame_jpeg(vid, float(qs.get("t", ["0"])[0]))
+            except (calib.CalibrationError, ValueError) as e:
+                self._json(404, {"error": str(e)})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(jpg)))
+            self.send_header("X-Frame-Width", str(w))
+            self.send_header("X-Frame-Height", str(h))
+            self.send_header("Access-Control-Expose-Headers", "X-Frame-Width, X-Frame-Height")
+            self.end_headers()
+            self.wfile.write(jpg)
+
         elif route == "/nodes":
             self._json(200, [t.describe() for t in NODE_TYPES.values()])
 
@@ -694,6 +723,24 @@ class Handler(BaseHTTPRequestHandler):
                 # The editor sends its current graph so previews work after a restart.
                 self._json(200, generate_node_preview(str(payload.get("node_id", "")), payload.get("graph")))
 
+            elif route == "/calib/ground_check":
+                self._json(200, calib.check_ground(payload.get("mapping") or {}))
+
+            elif route == "/calib/measure":
+                self._json(200, calib.measure(payload.get("a_px"), payload.get("b_px")))
+
+            elif route == "/calib/ground_save":
+                self._json(200, calib.save_ground(payload))
+
+            elif route == "/calib/lines_save":
+                self._json(200, calib.save_lines(payload))
+
+            elif route == "/calib/zones_save":
+                self._json(200, calib.save_zones(payload))
+
+            elif route == "/calib/width":
+                self._json(200, calib.save_width(str(payload.get("approach", "")), float(payload.get("width_m")), str(payload.get("value_type", "")), payload.get("check_error_m"), payload.get("signal_head")))
+
             elif route == "/stop":
                 EXEC_MGR.stop_run()
                 self._json(200, {"stopped": True, "state": "stopped"})
@@ -729,6 +776,8 @@ class Handler(BaseHTTPRequestHandler):
 
             else:
                 self._json(404, {"error": "Not found"})
+        except calib.CalibrationError as error:
+            self._json(422, {"error": str(error)})
         except GraphError as error:
             self._json(422, {"valid": False, "error": str(error)})
         except Exception as error:

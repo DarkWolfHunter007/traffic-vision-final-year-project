@@ -28,3 +28,4 @@ configs/signal_log.csv
 .cache/
 _backup_before_switch/
 outputs/
+*.yaml.bak

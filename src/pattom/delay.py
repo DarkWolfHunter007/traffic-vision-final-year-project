@@ -81,6 +81,9 @@ class Definitions:
         empty = sorted(k for k in required if d[k] is None)
         if empty:
             raise ValueError(f"{path}: {empty} not filled in (T46/O6)")
+        unset = sorted(name for name, a in d["approaches"].items() if a.get("stop_point_m") is None)
+        if unset:
+            raise ValueError(f"{path}: stop point not set for {unset} (click it again on the Calibrate page)")
         apps = {
             name: Approach(name, a["zone_px"], tuple(a["stop_point_m"]), a.get("signal_head"))
             for name, a in d["approaches"].items()
