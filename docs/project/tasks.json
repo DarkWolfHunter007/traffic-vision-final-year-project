@@ -2,7 +2,7 @@
   "_START_HERE": "You are continuing the Pattom signal-timing and low-emission intersection project. Step 1: read AI_RULES.md, then HANDOFF.md (sections 2 and 18) and handoff_addendum_2026-10-14.md, then PRD.md (section 8.1 is the source register: input values come only from there or from the footage), ARCHITECTURE.md, PLAN.md, IRC_SP41_extract.md, EMISSION_SOURCES.md and this file. Step 2: continue the first task in review_order whose status is IN_PROGRESS and which is not marked ongoing; if none, take the first task whose status is PENDING, whose T dependencies are all DONE and whose O dependencies are all DECIDED. Ids starting with T are tasks (see the 'tasks' section). Ids starting with O are open decisions (see 'open_decisions'). Step 3: do the task, produce the output named in 'output', then check it against 'done_when'. Step 4: set the status, fill 'evidence' with what was produced (file, table, or number with its source), add a line to the task's history and to _meta.history. Step 5: never mark DONE without evidence. Status rule: BLOCKED means the task waits on an open decision that is not yet DECIDED. A task waiting only on other tasks stays PENDING. When an open decision becomes DECIDED, set the tasks that waited only on it back to PENDING. If a task needs an open decision, stop and ask the user instead of choosing. If the guide has not answered, the user may close an item as 'decided, guide pending' with a date; record that in the decision's guide_confirmed field and keep it visible.",
   "_meta": {
     "project": "Optimization of Traffic Management Strategies for Vehicular Emission Reduction at Urban Intersections (Pattom, Thiruvananthapuram)",
-    "last_updated": "2026-10-14",
+    "last_updated": "2026-10-19",
     "owner": "Allen MT Maliyil (on site alone)",
     "guide": "Dr. Reshmy D. S.",
     "status_values": ["PENDING", "IN_PROGRESS", "BLOCKED", "DONE"],
@@ -18,14 +18,15 @@
         "Y": "Tasks added, removed or re-ordered.",
         "Z": "Status updates, evidence, wording."
       },
-      "current_version": "v0.5.0"
+      "current_version": "v0.5.1"
     },
     "history": {
       "v0.1.0": "2026-10-14: Ledger created from HANDOFF.md, the 14 Oct addendum, the consistency-fix list and the planning conversation.",
       "v0.2.0": "2026-10-14: Decisions D8-D13 added. Open decisions restructured with status; O1, O2, O8 decided, O3, O4, O6 partly decided, O13 added. T45 (local review screen) added before T15 and T15 now depends on it. T21 no longer waits on O6 (delay settled). T24 no longer depends on O5 (it proposes the answer) and T25 now does. T24, T41, T42, T44 set IN_PROGRESS. T28 now depends on O13. T38 scope widened. Documents block added.",
       "v0.3.0": "2026-10-14: Applied the Opus 5.5 review. Key 'files' renamed 'tasks'. Added T46 (operational definitions before recording), T47 (propose the congestion-index formula), T48 (pixel-to-ground mapping and drift check). Split the circular definition tasks: T46 and T47 propose, T20/T21/T23 compute. T28 and T29 no longer wait on O13; T30 does. T05 no longer waits on O11 (now waits on O15). T16 waits on T15, T05, T06. T17 waits on T18 (not T19). T19 waits on the slot recordings. T25, T20, T22 gained dependencies. D2 reworded as a dated user override; D4 guide_confirmed set to false; D10 narrowed. Open decisions O14-O16 added; O6 and O13 widened. Statuses reset to the BLOCKED/PENDING rule. Ongoing flag added to T44. Per-task history added. Fixes-file id map added.",
       "v0.4.0": "2026-10-14: IRC SP 41 (1994, supplied by the guide) recorded: D11 updated, D14 added, O3 narrowed to the PCU-table choice, notes added to T12, T22, T27, T28, T38. Emission research recorded: interim CO2-first method proposed (not a decision), T24 and T25 notes and evidence updated, O12 note added, T07 note added. T49 added (user obtains the priority papers and the ARAI Annexure IV). New documents: IRC_SP41_extract.md and EMISSION_SOURCES.md. PRD moved to v0.3.",
-      "v0.5.0": "2026-10-14: Source register added (D15): input values come only from the footage or the registered sources (IRC SP 41, the emission sources). D13 updated: CO2-first working plan adopted by the user (guide pending); O5 closed; O17 (phase 2 pollutants) and O18 (how SUMO emissions are computed) added. T50 added (check 'reported' values against the papers); T40 waits on it. Gap recorded on T28 (no delay formula in SP 41). T36 waits on O18. Documents moved to PRD v0.4, ARCHITECTURE v0.3, PLAN v0.3, AI_RULES v0.3."
+      "v0.5.0": "2026-10-14: Source register added (D15): input values come only from the footage or the registered sources (IRC SP 41, the emission sources). D13 updated: CO2-first working plan adopted by the user (guide pending); O5 closed; O17 (phase 2 pollutants) and O18 (how SUMO emissions are computed) added. T50 added (check 'reported' values against the papers); T40 waits on it. Gap recorded on T28 (no delay formula in SP 41). T36 waits on O18. Documents moved to PRD v0.4, ARCHITECTURE v0.3, PLAN v0.3, AI_RULES v0.3.",
+      "v0.5.1": "19 Oct 2026: O3 decided (SP 41 Table 3.1, D16), O4 decided as a working formula with equal weights, guide pending (D17), O6 partly decided (D18; the stopped-speed threshold is still open). T22 and T23 set to PENDING."
     },
     "review_order": ["T44", "T38", "T41", "T42", "T43", "T24", "T49", "T50", "T01", "T02", "T46", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T48", "T11", "T12", "T13", "T14", "T45", "T15", "T16", "T18", "T17", "T19", "T20", "T21", "T22", "T47", "T23", "T25", "T26", "T27", "T28", "T29", "T30", "T31", "T32", "T33", "T36", "T34", "T35", "T37", "T39", "T40"],
     "documents": {
@@ -125,6 +126,21 @@
       "text": "Source data policy: input values come only from the footage or the source register in PRD section 8.1 (IRC SP 41, the emission sources in EMISSION_SOURCES.md). A value the register lacks is reported as a gap and not filled from another source. The user decides whether to add a source.",
       "source": "User, 14 Oct 2026 ('these data will be used rather than any other source data')",
       "guide_confirmed": false
+    },
+    "D16": {
+      "text": "PCU table for V/C: SP 41 Table 3.1 (book p. 15). Same values as Table III-1 for the project classes. Measured saturation flow from the footage is used as a cross-check only.",
+      "source": "User, 19 Oct 2026, accepting the AI proposal",
+      "guide_confirmed": false
+    },
+    "D17": {
+      "text": "Working congestion-index formula: V/C (reference 1.0), mean stopped delay and max queue length (min-max), equal weights 1/3 each, read as a relative ranking, tested with varied weights. Equal weights are a neutral baseline, not evidence.",
+      "source": "User, 19 Oct 2026, accepting the AI proposal",
+      "guide_confirmed": false
+    },
+    "D18": {
+      "text": "Operational definitions: speed window 2 s, max gap 1 s, queue as stopped vehicles inside the approach zone measured to the last one, once per cycle at the longest. Stopped-speed threshold stays open until read from calibrated footage.",
+      "source": "User, 19 Oct 2026, accepting the AI proposal",
+      "guide_confirmed": false
     }
   },
   "open_decisions": {
@@ -140,14 +156,14 @@
       "resolution": "Keep all five (D3). State in the report that land requirement is equal for all alternatives and cost differs only by hardware. Guide confirmation pending."
     },
     "O3": {
-      "status": "PARTIAL",
+      "status": "DECIDED",
       "text": "Capacity method and PCU set for V/C.",
-      "resolution": "Capacity method decided: SP 41 section 7.6 (D11). Open: which PCU table (Table 3.1, book p. 15, or Table III-1, p. 114; they differ for tractor-trailers) and whether to compare with a saturation flow measured from the footage."
+      "resolution": "Capacity method decided: SP 41 section 7.6 (D11). 19 Oct 2026: user chose SP 41 Table 3.1 (book p. 15), guide pending (D16). For our five classes both tables give the same PCU values (two-wheeler 0.5, car and auto 1.0, bus and truck 3.0); they differ only for tractor-trailers, which the class list lacks. A saturation flow measured from queue-discharge gaps in the footage is to be used as a cross-check of s = 525 w, not as a replacement. Approach widths are still to be measured on site."
     },
     "O4": {
-      "status": "PARTIAL",
+      "status": "DECIDED",
       "text": "Congestion index: indicators, normalisation, weights, interpretation scale.",
-      "resolution": "Index kept (D9). Formula open and not to be invented."
+      "resolution": "Index kept (D9). 19 Oct 2026: user adopted the AI proposal as the working formula, guide pending (D17): V/C against reference 1.0, mean stopped delay and max queue length min-max scaled, equal weights 1/3 each, read as a relative ranking, with a weight-sensitivity test. Weights are not evidence-based; the report must say so."
     },
     "O5": {
       "status": "DECIDED",
@@ -157,7 +173,7 @@
     "O6": {
       "status": "PARTIAL",
       "text": "Operational definition of queue length, and the stopped-speed threshold used for stopped delay.",
-      "resolution": "Delay is settled as stopped delay (D10). Queue definition and stopped-speed threshold are written in T46 and approved by the user."
+      "resolution": "Delay is settled as stopped delay (D10). 19 Oct 2026: user adopted the AI proposal, guide pending (D18). Decided: speed window 2 s, max gap 1 s, queue = stopped vehicles inside the approach zone, length measured back to the last such vehicle, taken once per cycle at its longest. STILL OPEN: the stopped-speed threshold value. It is to be read from the footage (speed noise of vehicles standing at red) after the ground calibration (T04, T48) exists; no number is registered until then. Stays PARTIAL."
     },
     "O7": {
       "status": "OPEN",
@@ -458,10 +474,12 @@
       "depends_on": ["T16", "T18", "T19", "O3"],
       "output": "Capacity per approach with method, PCU set and inputs documented, and V/C",
       "done_when": "Every capacity input is sourced or measured",
-      "status": "BLOCKED",
+      "status": "PENDING",
       "evidence": "",
       "notes": "Method: IRC SP 41 (1994) section 7.6, capacity = g x s / c, s = 525 w PCU/h (5.5 to 18 m), table for narrower approaches, gradient and right-turn corrections (D11). g and c come from T19. Choose the PCU table (O3): Table 3.1 or Table III-1. Optionally measure saturation flow from queue discharge in the footage and compare with 525 w. See IRC_SP41_extract.md. Do not use the 1,400-2,400 PCU/h approach-road values as saturation flow.",
-      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review", "v0.4.0 2026-10-14: notes or evidence updated for IRC SP 41 and the emission research run"]
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review", "v0.4.0 2026-10-14: notes or evidence updated for IRC SP 41 and the emission research run",
+        "v0.5.1 19 Oct 2026: O3 decided (D16); task waits only on other tasks, so PENDING"
+      ]
     },
     "T23": {
       "title": "Compute the congestion index",
@@ -469,10 +487,12 @@
       "depends_on": ["T20", "T21", "T22", "T47", "O4"],
       "output": "Index values per approach and slot, using the approved formula",
       "done_when": "The approved formula is applied identically to every approach and period",
-      "status": "BLOCKED",
+      "status": "PENDING",
       "evidence": "",
       "notes": "Avoid double-counting closely related indicators.",
-      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review"]
+      "history": ["v0.3.0 2026-10-14: dependencies or wording changed after the Opus 5.5 review",
+        "v0.5.1 19 Oct 2026: O4 decided, guide pending (D17); task waits only on other tasks, so PENDING"
+      ]
     },
     "T24": {
       "title": "Choose the emission-factor source and method",
