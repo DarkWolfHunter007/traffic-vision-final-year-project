@@ -70,3 +70,60 @@ def test_editor_server():
         assert b"Traffic" in urllib.request.urlopen(base + "/").read() or b"pipeline" in urllib.request.urlopen(base + "/").read()
     finally:
         server.shutdown()
+
+
+def test_ancestor_slicing():
+    from pattom.graph.engine import get_ancestors
+    spec = load_graph(EXAMPLE)
+    ancestors = get_ancestors(spec, "track")
+    assert ancestors == {"cfr", "detect", "track"}
+    assert "count" not in ancestors
+    assert "congestion" not in ancestors
+
+
+def test_content_hash_caching(tmp_path):
+    from pattom.graph.engine import check_cache, compute_cache_key, write_cache
+    dummy_out = tmp_path / "dummy.txt"
+    dummy_out.write_text("dummy output", encoding="utf-8")
+    key = compute_cache_key("cfr", {}, {"slot": "test", "fps": 30.0})
+    write_cache("test_node", key, {"video": str(dummy_out)})
+    cached = check_cache("test_node", key)
+    assert cached is not None
+    assert cached["video"] == str(dummy_out)
+    # Stale cache if file is modified
+    dummy_out.write_text("modified", encoding="utf-8")
+    assert check_cache("test_node", key) is None
+
+
+def test_gate_checks_o3_o4_o6():
+    from pattom.graph.nodes import check_gate_o3, check_gate_o4, check_gate_o6
+    g6 = check_gate_o6({"definitions": "configs/definitions.example.yaml"})
+    assert g6["locked"] is True
+    assert "not set yet" in g6["reason"]
+
+    g3 = check_gate_o3({"config": "configs/indicators.example.yaml"})
+    assert g3["locked"] is True
+
+    g4 = check_gate_o4({"formula": "configs/congestion.example.yaml"})
+    assert g4["locked"] is True
+
+
+def test_locked_gate_refusal_in_run_graph():
+    from pattom.graph.nodes import NodeType, NODE_TYPES
+    dummy_type = NodeType(
+        name="mock_gated",
+        label="Mock Gated",
+        inputs=(),
+        outputs=(),
+        gate_checker=lambda p: {"locked": True, "decision": "MOCK", "reason": "Test locked gate"}
+    )
+    NODE_TYPES["mock_gated"] = dummy_type
+    try:
+        spec = {"nodes": {"g": {"type": "mock_gated"}}, "edges": []}
+        r = run_graph(spec)
+        assert r.status["g"] == "locked"
+        assert "Approval gate MOCK locked" in r.errors["g"]
+    finally:
+        NODE_TYPES.pop("mock_gated", None)
+
+

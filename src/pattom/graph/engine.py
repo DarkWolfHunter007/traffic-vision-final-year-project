@@ -1,20 +1,33 @@
-"""Graph validation and execution.
+"""Graph validation, content-hash caching, and execution engine.
 
-Graph spec (YAML or JSON)::
-
-    nodes: {id: {type: <node type>, params: {...}, pos: [x, y]}}
-    edges: [{from: "id.port", to: "id.port"}]
+Supports:
+- Topological sorting and strict port-type validation.
+- Content-hash caching: hash(inputs content + params + config contents + weights + code rev).
+- Subprocess execution with cooperative cancellation (can kill long-running YOLO/ffmpeg on Windows).
+- Failure isolation (failed node blocks only its downstream dependents).
+- Single-node target execution (runs only the target node and its uncompleted ancestors).
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+import subprocess
+import sys
+import tempfile
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
 from pattom.graph.nodes import NODE_TYPES
+from pattom.paths import REPO_ROOT
+from pattom.runmeta import code_revision, sha256_file
+
+CACHE_DIR = REPO_ROOT / ".cache" / "graph"
 
 
 class GraphError(ValueError):
@@ -27,6 +40,8 @@ class GraphRunResult:
     outputs: dict[str, dict[str, Any]] = field(default_factory=dict)
     status: dict[str, str] = field(default_factory=dict)
     errors: dict[str, str] = field(default_factory=dict)
+    elapsed: dict[str, float] = field(default_factory=dict)
+    logs: dict[str, list[str]] = field(default_factory=dict)
 
 
 def _endpoint(ref: str) -> tuple[str, str]:
@@ -92,15 +107,165 @@ def load_graph(path: Path) -> dict[str, Any]:
     return spec
 
 
-def run_graph(spec: dict[str, Any]) -> GraphRunResult:
-    """Execute nodes in dependency order. A failed node blocks only its downstream nodes."""
-    order = validate_graph(spec)
+def get_ancestors(spec: dict[str, Any], target_node_id: str) -> set[str]:
+    """Return all node IDs needed to execute target_node_id (including itself)."""
+    needed = {target_node_id}
+    wiring: dict[str, set[str]] = {n: set() for n in spec.get("nodes", {})}
+    for edge in spec.get("edges", []):
+        src, _ = _endpoint(edge["from"])
+        dst, _ = _endpoint(edge["to"])
+        wiring[dst].add(src)
+
+    stack = [target_node_id]
+    while stack:
+        curr = stack.pop()
+        for parent in wiring.get(curr, ()):
+            if parent not in needed:
+                needed.add(parent)
+                stack.append(parent)
+    return needed
+
+
+def _resolve_file_path(val: Any) -> Path | None:
+    if isinstance(val, (str, Path)) and str(val).strip():
+        p = Path(val)
+        candidate = p if p.is_absolute() else REPO_ROOT / p
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def compute_cache_key(node_type_name: str, inputs: dict[str, Any], params: dict[str, Any]) -> str:
+    """Hash of inputs content + params + config contents + model weights + code rev."""
+    h = hashlib.sha256()
+    h.update(node_type_name.encode("utf-8"))
+    h.update(code_revision().encode("utf-8"))
+
+    # Hash input files by content
+    for port_name in sorted(inputs.keys()):
+        val = inputs[port_name]
+        p = _resolve_file_path(val)
+        if p and p.is_file():
+            h.update(port_name.encode("utf-8"))
+            h.update(sha256_file(p).encode("utf-8"))
+        else:
+            h.update(f"{port_name}:{val}".encode("utf-8"))
+
+    # Hash parameters and any referenced config/model files
+    for k in sorted(params.keys()):
+        val = params[k]
+        h.update(k.encode("utf-8"))
+        p = _resolve_file_path(val)
+        if p and p.is_file():
+            h.update(sha256_file(p).encode("utf-8"))
+            # If it's a YAML config, also hash any referenced weights or subfiles
+            if p.suffix.lower() in (".yaml", ".yml"):
+                try:
+                    cfg_data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+                    if isinstance(cfg_data, dict):
+                        weights_path = cfg_data.get("weights")
+                        wp = _resolve_file_path(weights_path)
+                        if wp and wp.is_file():
+                            h.update(sha256_file(wp).encode("utf-8"))
+                except Exception:
+                    pass
+        else:
+            h.update(json.dumps(val, sort_keys=True, default=str).encode("utf-8"))
+
+    return h.hexdigest()
+
+
+def check_cache(node_id: str, cache_key: str) -> dict[str, str] | None:
+    """Return cached outputs if valid and all output files exist with matching hashes."""
+    cache_file = CACHE_DIR / f"{node_id}.cache.json"
+    if not cache_file.is_file():
+        return None
+    try:
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+        if data.get("cache_key") != cache_key:
+            return None
+        outputs = data.get("outputs", {})
+        output_shas = data.get("output_shas", {})
+        if not outputs:
+            return None
+        for port_name, path_str in outputs.items():
+            p = Path(path_str)
+            if not p.is_file():
+                return None
+            stored_sha = output_shas.get(port_name)
+            if stored_sha and sha256_file(p) != stored_sha:
+                return None
+        return outputs
+    except Exception:
+        return None
+
+
+def write_cache(node_id: str, cache_key: str, outputs: dict[str, str]) -> None:
+    """Store cache record for future fast runs."""
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_file = CACHE_DIR / f"{node_id}.cache.json"
+        output_shas = {}
+        for port_name, path_str in outputs.items():
+            p = Path(path_str)
+            if p.is_file():
+                output_shas[port_name] = sha256_file(p)
+        payload = {
+            "cache_key": cache_key,
+            "outputs": outputs,
+            "output_shas": output_shas,
+            "saved_at": time.time(),
+        }
+        cache_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def run_graph(
+    spec: dict[str, Any],
+    target_node_id: str | None = None,
+    force: bool = False,
+    use_subprocess: bool = False,
+    log_callback: Callable[[str, str], None] | None = None,
+    status_callback: Callable[[str, str, float | None, str | None], None] | None = None,
+    stop_event: threading.Event | None = None,
+) -> GraphRunResult:
+    """Execute nodes in dependency order with caching, isolation, and optional cancellation."""
+    full_order = validate_graph(spec)
+    if target_node_id:
+        if target_node_id not in spec["nodes"]:
+            raise GraphError(f"Target node {target_node_id!r} not in graph")
+        needed = get_ancestors(spec, target_node_id)
+        order = [n for n in full_order if n in needed]
+    else:
+        order = full_order
+
     wiring: dict[tuple[str, str], tuple[str, str]] = {}
     for edge in spec.get("edges", []):
         wiring[_endpoint(edge["to"])] = _endpoint(edge["from"])
 
     result = GraphRunResult(order=order)
+    active_proc: list[subprocess.Popen | None] = [None]
+
+    def _emit_log(node_id: str, line: str) -> None:
+        result.logs.setdefault(node_id, []).append(line)
+        if log_callback:
+            log_callback(node_id, line)
+
+    def _emit_status(node_id: str, st: str, elapsed: float | None = None, err: str | None = None) -> None:
+        result.status[node_id] = st
+        if err:
+            result.errors[node_id] = err
+        if elapsed is not None:
+            result.elapsed[node_id] = elapsed
+        if status_callback:
+            status_callback(node_id, st, elapsed, err)
+
     for node_id in order:
+        if stop_event and stop_event.is_set():
+            _emit_status(node_id, "cancelled", 0.0, "Execution cancelled by user")
+            continue
+
         node = spec["nodes"][node_id]
         node_type = NODE_TYPES[node["type"]]
         inputs: dict[str, Any] = {}
@@ -109,25 +274,143 @@ def run_graph(spec: dict[str, Any]) -> GraphRunResult:
             source = wiring.get((node_id, port.name))
             if source is None:
                 continue
-            if result.status.get(source[0]) != "completed":
-                blocked = source[0]
+            src_node, src_port = source
+            src_status = result.status.get(src_node)
+            if src_status not in ("completed", "cached"):
+                blocked = src_node
                 break
-            inputs[port.name] = result.outputs[source[0]][source[1]]
+            inputs[port.name] = result.outputs[src_node][src_port]
+
         if blocked:
-            result.status[node_id] = "skipped"
-            result.errors[node_id] = f"upstream node {blocked!r} did not complete"
+            _emit_status(node_id, "skipped", 0.0, f"upstream node {blocked!r} did not complete")
             continue
+
         params = {**node_type.params, **node.get("params", {})}
         unknown = set(node.get("params", {})) - set(node_type.params)
         missing = sorted(k for k in node_type.required if params.get(k) is None)
         if unknown or missing:
-            result.status[node_id] = "failed"
-            result.errors[node_id] = (f"unknown params {sorted(unknown)}" if unknown else f"required params not set: {missing}")
+            err_msg = f"unknown params {sorted(unknown)}" if unknown else f"required params not set: {missing}"
+            _emit_status(node_id, "failed", 0.0, err_msg)
             continue
-        try:
-            result.outputs[node_id] = node_type.run(inputs, params)
-            result.status[node_id] = "completed"
-        except Exception as error:  # node failures are reported per node, not raised
-            result.status[node_id] = "failed"
-            result.errors[node_id] = f"{type(error).__name__}: {error}"
+
+        # Check approval gate
+        if node_type.gate_checker:
+            gate_info = node_type.gate_checker(params)
+            if gate_info.get("locked"):
+                err_msg = f"Approval gate {gate_info['decision']} locked: {gate_info['reason']}"
+                _emit_log(node_id, f"[{node_id}] Refused: {err_msg}")
+                _emit_status(node_id, "locked", 0.0, err_msg)
+                continue
+            elif not gate_info.get("approved") and gate_info.get("allow_draft"):
+                _emit_log(node_id, f"[{node_id}] Notice: Running with unapproved draft definitions ({gate_info['decision']})")
+
+        # Check content-hash cache
+        cache_key = compute_cache_key(node_type.name, inputs, params)
+        if not force:
+            cached_outputs = check_cache(node_id, cache_key)
+            if cached_outputs:
+                result.outputs[node_id] = cached_outputs
+                _emit_log(node_id, f"[{node_id}] Cache hit: reusing outputs from previous run")
+                _emit_status(node_id, "cached", 0.0)
+                continue
+
+        # Execute node
+        _emit_status(node_id, "running")
+        _emit_log(node_id, f"[{node_id}] Starting stage {node_type.label}...")
+        start_time = time.time()
+
+        if use_subprocess:
+            # Subprocess runner allows hard kill on Windows
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as out_tmp:
+                out_path = Path(out_tmp.name)
+            cmd = [
+                sys.executable,
+                "-m",
+                "pattom.graph.worker",
+                "--type",
+                node_type.name,
+                "--inputs",
+                json.dumps(inputs),
+                "--params",
+                json.dumps(params),
+                "--out",
+                str(out_path),
+            ]
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    cwd=str(REPO_ROOT),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+                active_proc[0] = proc
+
+                # Stream stdout in background
+                def _stream_lines(pipe):
+                    for line in iter(pipe.readline, ""):
+                        line_clean = line.rstrip()
+                        if line_clean:
+                            _emit_log(node_id, line_clean)
+                    pipe.close()
+
+                stream_thread = threading.Thread(target=_stream_lines, args=(proc.stdout,), daemon=True)
+                stream_thread.start()
+
+                # Poll process with cancel checks
+                while proc.poll() is None:
+                    if stop_event and stop_event.is_set():
+                        try:
+                            proc.terminate()
+                            proc.wait(timeout=1.0)
+                        except Exception:
+                            proc.kill()
+                        _emit_status(node_id, "cancelled", time.time() - start_time, "Execution cancelled by user")
+                        break
+                    time.sleep(0.05)
+
+                stream_thread.join(timeout=1.0)
+                if stop_event and stop_event.is_set():
+                    continue
+
+                if proc.returncode == 0:
+                    outputs = json.loads(out_path.read_text(encoding="utf-8"))
+                    elapsed = time.time() - start_time
+                    result.outputs[node_id] = outputs
+                    write_cache(node_id, cache_key, outputs)
+                    _emit_log(node_id, f"[{node_id}] Completed in {elapsed:.2f}s")
+                    _emit_status(node_id, "completed", elapsed)
+                else:
+                    elapsed = time.time() - start_time
+                    err_msg = f"Process exited with code {proc.returncode}"
+                    _emit_log(node_id, f"[{node_id}] Failed: {err_msg}")
+                    _emit_status(node_id, "failed", elapsed, err_msg)
+            except Exception as error:
+                elapsed = time.time() - start_time
+                err_msg = f"{type(error).__name__}: {error}"
+                _emit_log(node_id, f"[{node_id}] Error: {err_msg}")
+                _emit_status(node_id, "failed", elapsed, err_msg)
+            finally:
+                active_proc[0] = None
+                if out_path.exists():
+                    try:
+                        out_path.unlink()
+                    except Exception:
+                        pass
+        else:
+            # Direct in-process run (fast, used by tests)
+            try:
+                outputs = node_type.run(inputs, params)
+                elapsed = time.time() - start_time
+                result.outputs[node_id] = outputs
+                write_cache(node_id, cache_key, outputs)
+                _emit_log(node_id, f"[{node_id}] Completed in {elapsed:.2f}s")
+                _emit_status(node_id, "completed", elapsed)
+            except Exception as error:
+                elapsed = time.time() - start_time
+                err_msg = f"{type(error).__name__}: {error}"
+                _emit_log(node_id, f"[{node_id}] Error: {err_msg}")
+                _emit_status(node_id, "failed", elapsed, err_msg)
+
     return result

@@ -3,128 +3,1812 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Traffic Vision - Node Editor</title>
+<title>Traffic Vision - Pattom Node Pipeline</title>
 <style>
-  :root { --bg:#f6f7f9; --fg:#1b1f24; --card:#fff; --line:#8a94a3; --ok:#1a7f37; --bad:#c62828; --warn:#b26a00; --gate:#6a3fb5; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#14171a; --fg:#e6e8eb; --card:#1f2429; --line:#7b8594; --ok:#4cc26a; --bad:#ff6b6b; --warn:#e0a040; --gate:#b394f0; } }
-  body { margin:0; font:14px system-ui,sans-serif; background:var(--bg); color:var(--fg); display:flex; flex-direction:column; height:100vh; }
-  header { padding:8px 16px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; border-bottom:1px solid var(--line); }
-  header h1 { font-size:16px; margin:0 8px 0 0; }
-  button, select { font:inherit; padding:4px 10px; }
-  #wrap { flex:1; display:flex; min-height:0; }
-  svg { flex:1; min-width:0; }
-  #side { width:280px; padding:12px; border-left:1px solid var(--line); overflow:auto; }
-  #msg { padding:6px 16px; border-top:1px solid var(--line); min-height:20px; }
-  .node rect { fill:var(--card); stroke:var(--line); stroke-width:1.5; rx:6; }
-  
-  .node.sel rect { stroke-width:3; }
-  .node.completed rect { stroke:var(--ok); } .node.failed rect { stroke:var(--bad); } .node.skipped rect { stroke:var(--warn); }
-  .node text { fill:var(--fg); font-size:12px; pointer-events:none; }
-  .port { fill:var(--line); cursor:crosshair; } .port:hover { fill:var(--ok); }
-  .edge { stroke:var(--line); fill:none; stroke-width:2; }
-  textarea { width:100%; height:120px; font:12px monospace; box-sizing:border-box; }
-  label { display:block; margin:8px 0 2px; font-weight:600; }
-  input[type=text] { width:100%; box-sizing:border-box; }
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-border: #334155;
+    --text: #f8fafc;
+    --text-muted: #94a3b8;
+    --primary: #3b82f6;
+    --primary-hover: #2563eb;
+    --ok: #10b981;
+    --bad: #ef4444;
+    --warn: #f59e0b;
+    --cyan: #06b6d4;
+    --purple: #8b5cf6;
+    --card: #1e293b;
+    --node-bg: #1e293b;
+    --node-border: #475569;
+    --node-selected: #38bdf8;
+    --grid-dot: #334155;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --panel-border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --ok: #059669;
+      --bad: #dc2626;
+      --warn: #d97706;
+      --cyan: #0891b2;
+      --purple: #7c3aed;
+      --card: #ffffff;
+      --node-bg: #ffffff;
+      --node-border: #cbd5e1;
+      --node-selected: #0284c7;
+      --grid-dot: #cbd5e1;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Header */
+  header {
+    height: 48px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    gap: 12px;
+    z-index: 10;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .brand-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--primary);
+    font-weight: 600;
+  }
+  .btn-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  button, select {
+    font: inherit;
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 5px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--primary);
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  button.primary {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+    font-weight: 600;
+  }
+  button.primary:hover:not(:disabled) {
+    background: var(--primary-hover);
+  }
+  button.danger {
+    background: var(--bad);
+    color: #fff;
+    border-color: var(--bad);
+  }
+
+  /* Main Workspace */
+  #workspace {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    position: relative;
+  }
+
+  /* Palette Sidebar */
+  #palette {
+    width: 220px;
+    background: var(--panel);
+    border-right: 1px solid var(--panel-border);
+    display: flex;
+    flex-direction: column;
+    z-index: 5;
+  }
+  .sidebar-header {
+    padding: 10px 12px;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .search-box {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .search-box input {
+    width: 100%;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    outline: none;
+  }
+  .search-box input:focus {
+    border-color: var(--primary);
+  }
+  .palette-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cat-header {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    padding: 8px 4px 4px 4px;
+    text-transform: uppercase;
+  }
+  .palette-item {
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.02);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+  }
+  .palette-item:hover {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: var(--primary);
+  }
+  .palette-item .item-type {
+    font-weight: 600;
+  }
+  .palette-item .item-badge {
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  /* Canvas Area */
+  #canvas-container {
+    flex: 1;
+    position: relative;
+    background: var(--bg);
+    overflow: hidden;
+    cursor: default;
+  }
+  svg#canvas {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  /* SVG Nodes & Edges */
+  .grid-pattern {
+    fill: none;
+    stroke: var(--grid-dot);
+    stroke-width: 1;
+    stroke-dasharray: 1 19;
+  }
+  .edge {
+    stroke: var(--panel-border);
+    fill: none;
+    stroke-width: 2.5;
+    cursor: pointer;
+    transition: stroke 0.15s, stroke-width 0.15s;
+  }
+  .edge:hover {
+    stroke: var(--bad);
+    stroke-width: 4;
+  }
+  .edge-drag {
+    stroke: var(--cyan);
+    fill: none;
+    stroke-width: 2.5;
+    stroke-dasharray: 4;
+    pointer-events: none;
+  }
+
+  /* HTML Nodes inside SVG foreignObject */
+  .node-card {
+    background: var(--node-bg);
+    border: 1.5px solid var(--node-border);
+    border-radius: 8px;
+    color: var(--text);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    cursor: move;
+    user-select: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .node-card.selected {
+    border-color: var(--node-selected);
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+  }
+  .node-card.completed { border-left: 4px solid var(--ok); }
+  .node-card.cached { border-left: 4px solid var(--cyan); }
+  .node-card.running { border-left: 4px solid var(--primary); }
+  .node-card.failed { border-left: 4px solid var(--bad); }
+  .node-card.skipped { border-left: 4px solid var(--warn); }
+  .node-card.locked { border-left: 4px solid #f59e0b; }
+
+  .node-header {
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .node-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .node-status-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .node-status-badge.idle { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); }
+  .node-status-badge.queued { background: rgba(59, 130, 246, 0.15); color: var(--primary); }
+  .node-status-badge.running { background: rgba(59, 130, 246, 0.25); color: var(--primary); animation: pulse 1s infinite alternate; }
+  .node-status-badge.completed { background: rgba(16, 185, 129, 0.15); color: var(--ok); }
+  .node-status-badge.cached { background: rgba(6, 182, 212, 0.15); color: var(--cyan); }
+  .node-status-badge.failed { background: rgba(239, 68, 68, 0.15); color: var(--bad); }
+  .node-status-badge.skipped { background: rgba(245, 158, 11, 0.15); color: var(--warn); }
+  .node-status-badge.locked { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+  @keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }
+
+  .node-body {
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 11px;
+    min-height: 48px;
+  }
+  .port-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .port-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+  }
+  .port-row.output { justify-content: flex-end; }
+  .port-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    cursor: crosshair;
+    transition: transform 0.1s, box-shadow 0.1s;
+    border: 1.5px solid var(--node-bg);
+  }
+  .port-dot:hover {
+    transform: scale(1.3);
+    box-shadow: 0 0 6px currentColor;
+  }
+  .port-name {
+    color: var(--text-muted);
+  }
+
+  .node-footer {
+    padding: 4px 10px;
+    background: rgba(0, 0, 0, 0.1);
+    border-top: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .node-btn {
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+  .gate-badge {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--bad);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  /* Inspector Sidebar */
+  #inspector {
+    width: 320px;
+    background: var(--panel);
+    border-left: 1px solid var(--panel-border);
+    display: flex;
+    flex-direction: column;
+    z-index: 5;
+    overflow-y: auto;
+  }
+  .inspector-body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .form-group label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .form-group input, .form-group select {
+    width: 100%;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    outline: none;
+  }
+  .form-group input:focus, .form-group select:focus {
+    border-color: var(--primary);
+  }
+  .picker-row {
+    display: flex;
+    gap: 6px;
+  }
+  .picker-row input { flex: 1; }
+  .gate-card {
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .gate-card.approved {
+    border-color: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.08);
+  }
+  .gate-card-title {
+    font-weight: 700;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .gate-card-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  /* Bottom Drawer */
+  #drawer {
+    height: 160px;
+    background: var(--panel);
+    border-top: 1px solid var(--panel-border);
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+  }
+  .drawer-tabs {
+    display: flex;
+    background: rgba(0, 0, 0, 0.1);
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .drawer-tab {
+    padding: 6px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+  }
+  .drawer-tab.active {
+    color: var(--text);
+    border-color: var(--primary);
+    background: var(--panel);
+  }
+  .drawer-content {
+    flex: 1;
+    overflow: auto;
+    padding: 8px 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+  }
+  .log-line {
+    padding: 2px 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .log-time { color: var(--text-muted); margin-right: 8px; }
+  .log-node { color: var(--cyan); margin-right: 6px; font-weight: 600; }
+
+  /* Modal / Result Viewer / Config Editor */
+  #modal, #configModal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(2px);
+  }
+  #modal.open, #configModal.open { display: flex; }
+  .modal-box {
+    width: 90vw;
+    max-width: 1100px;
+    height: 85vh;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  }
+  .modal-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 700;
+  }
+  .modal-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .video-container {
+    flex: 1;
+    background: #000;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .video-container video {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+  }
+  .video-container canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+  }
+  .modal-sidebar {
+    width: 320px;
+    border-left: 1px solid var(--panel-border);
+    padding: 12px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .stats-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 10px;
+  }
+  .stats-num { font-size: 20px; font-weight: 700; color: var(--primary); }
+  .table-container {
+    width: 100%;
+    overflow-x: auto;
+  }
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  table.data-table th, table.data-table td {
+    padding: 6px 8px;
+    border: 1px solid var(--panel-border);
+    text-align: left;
+  }
+  table.data-table th { background: rgba(0, 0, 0, 0.2); }
 </style>
 </head>
 <body>
-<header>
-  <h1>Traffic Vision pipeline</h1>
-  <select id="add"></select><button id="addBtn">Add node</button>
-  <button id="delBtn">Delete selected</button>
-  <button id="valBtn">Validate</button><button id="runBtn">Run</button>
-  <button id="expBtn">Export JSON</button><button id="impBtn">Import JSON</button>
-</header>
-<div id="wrap">
-  <svg id="canvas"></svg>
-  <div id="side"><em>Select a node to edit its parameters. Drag from an output dot to an input dot to connect.</em></div>
-</div>
-<div id="msg"></div>
-<script>
-const NS = "http://www.w3.org/2000/svg", W = 190, ROW = 20, HEAD = 26;
-let types = {}, graph = {nodes:{}, edges:[]}, sel = null, status = {}, drag = null, link = null;
-const svg = document.getElementById("canvas"), msg = t => document.getElementById("msg").textContent = t;
-const el = (n, a = {}, p = svg) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
-const rows = t => Math.max(t.inputs.length, t.outputs.length, 1);
-const portPos = (id, port, out) => { const n = graph.nodes[id], t = types[n.type];
-  const i = (out ? t.outputs : t.inputs).findIndex(p => p.name === port);
-  return [n.pos[0] + (out ? W : 0), n.pos[1] + HEAD + ROW * i + ROW / 2]; };
 
-function draw() {
-  svg.replaceChildren();
+<header>
+  <div class="brand">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+    Traffic Vision
+    <span class="brand-badge">Pattom Node Pipeline</span>
+  </div>
+
+  <div class="btn-group">
+    <button id="runBtn" class="primary" title="Run entire pipeline">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Run
+    </button>
+    <button id="runSelectedBtn" title="Run up to selected node">Run Selected</button>
+    <button id="stopBtn" class="danger" disabled title="Cancel running execution">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+      Stop
+    </button>
+  </div>
+
+  <div class="btn-group">
+    <button id="tidyBtn" title="Tidy & auto-align nodes">Tidy Layout</button>
+    <button id="undoBtn" title="Undo change">Undo</button>
+    <button id="redoBtn" title="Redo change">Redo</button>
+    <button id="presetBtn" title="Load Pattom Demo Pipeline">Load Demo Preset</button>
+  </div>
+
+  <div class="btn-group">
+    <button id="expBtn" title="Export graph JSON">Export</button>
+    <button id="impBtn" title="Import graph JSON">Import</button>
+    <button id="zoomResetBtn">100%</button>
+    <button id="zoomFitBtn">Fit View</button>
+  </div>
+</header>
+
+<div id="workspace">
+  <!-- Left Palette -->
+  <div id="palette">
+    <div class="sidebar-header">Node Palette</div>
+    <div class="search-box">
+      <input type="text" id="paletteSearch" placeholder="Search nodes...">
+    </div>
+    <div class="palette-list" id="paletteList"></div>
+  </div>
+
+  <!-- Central Canvas -->
+  <div id="canvas-container">
+    <svg id="canvas">
+      <defs>
+        <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="2" cy="2" r="1.5" fill="var(--grid-dot)"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid)"/>
+      <g id="viewport">
+        <g id="edges-layer"></g>
+        <g id="nodes-layer"></g>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Right Inspector -->
+  <div id="inspector">
+    <div class="sidebar-header">
+      <span>Node Inspector</span>
+      <button id="deleteNodeBtn" class="node-btn danger" style="display:none;">Delete</button>
+    </div>
+    <div class="inspector-body" id="inspectorBody">
+      <em style="color:var(--text-muted);">Select a node on the canvas to configure parameters and check approval gates.</em>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Drawer -->
+<div id="drawer">
+  <div class="drawer-tabs">
+    <div class="drawer-tab active" data-tab="logs">Execution Logs</div>
+    <div class="drawer-tab" data-tab="history">Run History (.run.json)</div>
+    <div class="drawer-tab" data-tab="validation">Validation & Order</div>
+  </div>
+  <div class="drawer-content" id="drawerContent"></div>
+</div>
+
+<!-- Result Viewer Modal -->
+<div id="modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span id="modalTitle">Node Preview</span>
+      <button id="closeModalBtn">&times;</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Config Editor Modal -->
+<div id="configModal">
+  <div class="modal-box" style="width: 720px; max-width: 90vw; height: 560px;">
+    <div class="modal-header">
+      <span id="configModalTitle">Edit Configuration</span>
+      <button id="closeConfigModalBtn">&times;</button>
+    </div>
+    <div style="padding: 10px 16px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--panel-border); font-size: 11px; color: var(--text-muted);" id="configModalHelp">
+      Configure civil engineering parameters. Values are strictly verified and cannot be invented.
+    </div>
+    <div style="flex: 1; padding: 12px; display: flex; flex-direction: column; min-height: 0;">
+      <textarea id="configModalEditor" spellcheck="false" style="flex: 1; width: 100%; box-sizing: border-box; background: #0b1120; color: #f8fafc; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.5; padding: 10px; border: 1px solid var(--panel-border); border-radius: 5px; resize: none; outline: none;"></textarea>
+      <div id="configModalError" style="color: var(--bad); font-size: 11px; margin-top: 6px; display: none;"></div>
+    </div>
+    <div style="padding: 10px 16px; border-top: 1px solid var(--panel-border); display: flex; justify-content: flex-end; gap: 8px;">
+      <button id="cancelConfigModalBtn">Cancel</button>
+      <button id="saveConfigModalBtn" class="primary">Save & Revalidate</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// State & Constants
+const NODE_WIDTH = 210;
+const NODE_HEADER_H = 32;
+const PORT_ROW_H = 22;
+const PORT_COLORS = {
+  video: "#8b5cf6",
+  detections: "#f59e0b",
+  tracks: "#06b6d4",
+  counts: "#10b981",
+  delays: "#ef4444",
+  emissions: "#f97316",
+  indicators: "#3b82f6",
+  index: "#14b8a6"
+};
+
+let nodeTypes = {};
+let graph = { nodes: {}, edges: [] };
+let selectedNodeId = null;
+let currentTab = "logs";
+let logs = [];
+let executionState = { state: "idle", status: {}, elapsed: {}, errors: {} };
+let historyStack = [];
+let redoStack = [];
+
+// Pan & Zoom
+let panX = 40, panY = 40, zoom = 1.0;
+let isPanning = false, panStart = { x: 0, y: 0 };
+let activeDrag = null; // { id, startX, startY, nodeStartX, nodeStartY }
+let activeLink = null; // { fromNode, fromPort, startX, startY, curX, curY }
+
+const svg = document.getElementById("canvas");
+const viewport = document.getElementById("viewport");
+const edgesLayer = document.getElementById("edges-layer");
+const nodesLayer = document.getElementById("nodes-layer");
+
+function updateViewport() {
+  viewport.setAttribute("transform", `translate(${panX}, ${panY}) scale(${zoom})`);
+}
+
+function pushHistory() {
+  historyStack.push(JSON.stringify(graph));
+  if (historyStack.length > 30) historyStack.shift();
+  redoStack = [];
+}
+
+// Coordinate conversions
+function screenToWorld(clientX, clientY) {
+  const r = svg.getBoundingClientRect();
+  return {
+    x: (clientX - r.left - panX) / zoom,
+    y: (clientY - r.top - panY) / zoom
+  };
+}
+
+function getPortPosition(nodeId, portName, isOutput) {
+  const n = graph.nodes[nodeId];
+  if (!n) return { x: 0, y: 0 };
+  const t = nodeTypes[n.type];
+  if (!t) return { x: n.pos[0], y: n.pos[1] };
+  const list = isOutput ? t.outputs : t.inputs;
+  const idx = list.findIndex(p => p.name === portName);
+  const rowIdx = idx >= 0 ? idx : 0;
+  return {
+    x: n.pos[0] + (isOutput ? NODE_WIDTH : 0),
+    y: n.pos[1] + NODE_HEADER_H + rowIdx * PORT_ROW_H + PORT_ROW_H / 2
+  };
+}
+
+// Render Graph
+function render() {
+  // Render Edges
+  edgesLayer.replaceChildren();
   for (const e of graph.edges) {
-    const [fn, fp] = e.from.split("."), [tn, tp] = e.to.split(".");
-    if (!graph.nodes[fn] || !graph.nodes[tn]) continue;
-    const [x1, y1] = portPos(fn, fp, true), [x2, y2] = portPos(tn, tp, false), dx = Math.max(40, Math.abs(x2 - x1) / 2);
-    const p = el("path", {class:"edge", d:`M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`});
-    p.addEventListener("dblclick", () => { graph.edges = graph.edges.filter(x => x !== e); draw(); });
+    const [fromN, fromP] = e.from.split(".");
+    const [toN, toP] = e.to.split(".");
+    if (!graph.nodes[fromN] || !graph.nodes[toN]) continue;
+    const p1 = getPortPosition(fromN, fromP, true);
+    const p2 = getPortPosition(toN, toP, false);
+    const dx = Math.max(40, Math.abs(p2.x - p1.x) / 2);
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("class", "edge");
+    path.setAttribute("d", `M ${p1.x} ${p1.y} C ${p1.x + dx} ${p1.y}, ${p2.x - dx} ${p2.y}, ${p2.x} ${p2.y}`);
+    const outPort = (nodeTypes[graph.nodes[fromN].type]?.outputs || []).find(p => p.name === fromP);
+    if (outPort) path.style.stroke = PORT_COLORS[outPort.type] || "var(--panel-border)";
+    path.addEventListener("dblclick", () => {
+      pushHistory();
+      graph.edges = graph.edges.filter(x => x !== e);
+      render();
+    });
+    edgesLayer.appendChild(path);
   }
-  if (link) el("path", {class:"edge", d:`M${link.x1},${link.y1} L${link.x2},${link.y2}`});
+
+  // Active Link Dragging Line
+  if (activeLink) {
+    const p1 = { x: activeLink.startX, y: activeLink.startY };
+    const p2 = { x: activeLink.curX, y: activeLink.curY };
+    const dx = Math.max(40, Math.abs(p2.x - p1.x) / 2);
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("class", "edge-drag");
+    path.setAttribute("d", `M ${p1.x} ${p1.y} C ${p1.x + dx} ${p1.y}, ${p2.x - dx} ${p2.y}, ${p2.x} ${p2.y}`);
+    edgesLayer.appendChild(path);
+  }
+
+  // Render Nodes
+  nodesLayer.replaceChildren();
   for (const [id, n] of Object.entries(graph.nodes)) {
-    const t = types[n.type]; if (!t) continue;
-    const g = el("g", {class:`node ${status[id] || ""} ${sel === id ? "sel" : ""}`,
-      transform:`translate(${n.pos[0]},${n.pos[1]})`});
-    el("rect", {width:W, height:HEAD + ROW * rows(t) + 4}, g);
-    const title = el("text", {x:8, y:17}, g); title.textContent = `${id} - ${t.label}`;
-    g.addEventListener("mousedown", ev => { sel = id; drag = {id, dx:ev.clientX - n.pos[0], dy:ev.clientY - n.pos[1]}; side(); });
-    t.inputs.forEach((p, i) => { const c = el("circle", {class:"port", cx:0, cy:HEAD + ROW * i + ROW / 2, r:5}, g);
-      c.dataset.node = id; c.dataset.port = p.name; c.dataset.dir = "in";
-      const l = el("text", {x:10, y:HEAD + ROW * i + 14}, g); l.textContent = `${p.name}: ${p.type}`; });
-    t.outputs.forEach((p, i) => { const c = el("circle", {class:"port", cx:W, cy:HEAD + ROW * i + ROW / 2, r:5}, g);
-      c.dataset.node = id; c.dataset.port = p.name; c.dataset.dir = "out";
-      c.addEventListener("mousedown", ev => { ev.stopPropagation(); const [x, y] = portPos(id, p.name, true); link = {from:`${id}.${p.name}`, x1:x, y1:y, x2:x, y2:y}; });
-      const l = el("text", {x:W - 10, y:HEAD + ROW * i + 14, "text-anchor":"end"}, g); l.textContent = `${p.name}: ${p.type}`; });
-  }
-}
-function side() {
-  const s = document.getElementById("side"); s.replaceChildren();
-  if (!sel) return;
-  const n = graph.nodes[sel], t = types[n.type];
-  s.append(Object.assign(document.createElement("h3"), {textContent:`${sel} (${t.name})`}));
-  if (t.required.length) s.append(Object.assign(document.createElement("p"), {textContent:`Required: ${t.required.join(", ")}. Approval gates (O3, O4, O6) are enforced by the stages from their config files.`}));
-  const ta = document.createElement("textarea");
-  ta.value = JSON.stringify({...t.params, ...(n.params || {})}, null, 2);
-  ta.onchange = () => { try { n.params = JSON.parse(ta.value); msg("Parameters updated"); } catch (e) { msg("Invalid JSON: " + e.message); } };
-  s.append(Object.assign(document.createElement("label"), {textContent:"Parameters (JSON)"}), ta);
-}
-svg.addEventListener("mousemove", ev => {
-  if (drag) { const n = graph.nodes[drag.id]; n.pos = [ev.clientX - drag.dx, ev.clientY - drag.dy]; draw(); }
-  else if (link) { const r = svg.getBoundingClientRect(); link.x2 = ev.clientX - r.left; link.y2 = ev.clientY - r.top; draw(); }
-});
-window.addEventListener("mouseup", ev => {
-  if (link) {
-    const c = ev.target.dataset;
-    if (c && c.dir === "in") {
-      graph.edges = graph.edges.filter(e => e.to !== `${c.node}.${c.port}`);
-      graph.edges.push({from:link.from, to:`${c.node}.${c.port}`});
+    const t = nodeTypes[n.type];
+    if (!t) continue;
+    const rows = Math.max(t.inputs.length, t.outputs.length, 1);
+    const height = NODE_HEADER_H + rows * PORT_ROW_H + 28;
+    const st = executionState.status[id] || "idle";
+    const isSelected = selectedNodeId === id;
+
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.setAttribute("transform", `translate(${n.pos[0]}, ${n.pos[1]})`);
+
+    const fo = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
+    fo.setAttribute("width", NODE_WIDTH);
+    fo.setAttribute("height", height);
+
+    const card = document.createElement("div");
+    card.className = `node-card ${st} ${isSelected ? "selected" : ""}`;
+    card.style.height = `${height}px`;
+
+    // Header
+    const hdr = document.createElement("div");
+    hdr.className = "node-header";
+    const ttl = document.createElement("div");
+    ttl.className = "node-title";
+    ttl.innerHTML = `<span>${id}</span> <span style="font-size:10px;color:var(--text-muted);">(${t.name})</span>`;
+    const badge = document.createElement("span");
+    badge.className = `node-status-badge ${st}`;
+    badge.textContent = st;
+    hdr.append(ttl, badge);
+
+    // Body (ports)
+    const body = document.createElement("div");
+    body.className = "node-body";
+    const inCol = document.createElement("div");
+    inCol.className = "port-col";
+    t.inputs.forEach((p, idx) => {
+      const row = document.createElement("div");
+      row.className = "port-row";
+      const dot = document.createElement("div");
+      dot.className = "port-dot";
+      dot.style.backgroundColor = PORT_COLORS[p.type] || "#888";
+      dot.dataset.node = id;
+      dot.dataset.port = p.name;
+      dot.dataset.dir = "in";
+      const lbl = document.createElement("span");
+      lbl.className = "port-name";
+      lbl.textContent = p.name;
+      row.append(dot, lbl);
+      inCol.append(row);
+    });
+
+    const outCol = document.createElement("div");
+    outCol.className = "port-col";
+    t.outputs.forEach((p, idx) => {
+      const row = document.createElement("div");
+      row.className = "port-row output";
+      const lbl = document.createElement("span");
+      lbl.className = "port-name";
+      lbl.textContent = p.name;
+      const dot = document.createElement("div");
+      dot.className = "port-dot";
+      dot.style.backgroundColor = PORT_COLORS[p.type] || "#888";
+      dot.dataset.node = id;
+      dot.dataset.port = p.name;
+      dot.dataset.dir = "out";
+      dot.addEventListener("mousedown", (ev) => {
+        ev.stopPropagation();
+        const start = getPortPosition(id, p.name, true);
+        activeLink = {
+          fromNode: id,
+          fromPort: p.name,
+          portType: p.type,
+          startX: start.x,
+          startY: start.y,
+          curX: start.x,
+          curY: start.y
+        };
+      });
+      row.append(lbl, dot);
+      outCol.append(row);
+    });
+    body.append(inCol, outCol);
+
+    // Footer
+    const ftr = document.createElement("div");
+    ftr.className = "node-footer";
+    const elTime = executionState.elapsed[id];
+    const timeText = elTime !== undefined ? `${elTime.toFixed(2)}s` : "";
+    ftr.innerHTML = `<span>${timeText}</span>`;
+
+    // Preview button
+    const prevBtn = document.createElement("button");
+    prevBtn.className = "node-btn";
+    prevBtn.textContent = "Preview";
+    prevBtn.onclick = (e) => { e.stopPropagation(); openPreviewModal(id); };
+    ftr.appendChild(prevBtn);
+
+    // Gate lock indicator
+    if (t.gate && t.gate.locked) {
+      const gateTag = document.createElement("span");
+      gateTag.className = "gate-badge";
+      gateTag.textContent = `🔒 ${t.gate.decision}`;
+      gateTag.title = t.gate.reason;
+      ftr.prepend(gateTag);
     }
-    link = null;
+
+    card.append(hdr, body, ftr);
+
+    card.addEventListener("mousedown", (ev) => {
+      if (ev.target.classList.contains("port-dot") || ev.target.closest(".port-dot") || ev.target.tagName === "BUTTON") return;
+      selectedNodeId = id;
+      render();
+      renderInspector();
+      activeDrag = {
+        id,
+        startX: ev.clientX,
+        startY: ev.clientY,
+        nodeStartX: n.pos[0],
+        nodeStartY: n.pos[1]
+      };
+    });
+
+    fo.appendChild(card);
+    g.appendChild(fo);
+    nodesLayer.appendChild(g);
   }
-  drag = null; draw();
+}
+
+// Canvas Mouse Events (Pan & Zoom & Wiring)
+svg.addEventListener("mousedown", (ev) => {
+  if (ev.target === svg || ev.target.id === "viewport" || ev.target.tagName === "rect") {
+    selectedNodeId = null;
+    render();
+    renderInspector();
+    isPanning = true;
+    panStart = { x: ev.clientX - panX, y: ev.clientY - panY };
+  }
 });
-const post = async (path, body) => (await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})).json();
-document.getElementById("addBtn").onclick = () => {
-  const t = document.getElementById("add").value; let i = 1; while (graph.nodes[`${t}${i}`]) i++;
-  graph.nodes[`${t}${i}`] = {type:t, params:{}, pos:[40 + 20 * i, 40 + 20 * i]}; draw();
+
+window.addEventListener("mousemove", (ev) => {
+  if (isPanning) {
+    panX = ev.clientX - panStart.x;
+    panY = ev.clientY - panStart.y;
+    updateViewport();
+  } else if (activeDrag) {
+    const dx = (ev.clientX - activeDrag.startX) / zoom;
+    const dy = (ev.clientY - activeDrag.startY) / zoom;
+    const n = graph.nodes[activeDrag.id];
+    // Snap to 10px grid
+    n.pos[0] = Math.round((activeDrag.nodeStartX + dx) / 10) * 10;
+    n.pos[1] = Math.round((activeDrag.nodeStartY + dy) / 10) * 10;
+    render();
+  } else if (activeLink) {
+    const w = screenToWorld(ev.clientX, ev.clientY);
+    activeLink.curX = w.x;
+    activeLink.curY = w.y;
+    render();
+  }
+});
+
+window.addEventListener("mouseup", (ev) => {
+  if (isPanning) isPanning = false;
+  if (activeDrag) {
+    activeDrag = null;
+    pushHistory();
+  }
+  if (activeLink) {
+    const target = ev.target ? (ev.target.closest(".port-dot") || ev.target) : null;
+    if (target && target.classList.contains("port-dot") && target.dataset.dir === "in") {
+      const toNode = target.dataset.node;
+      const toPort = target.dataset.port;
+
+      const toType = nodeTypes[graph.nodes[toNode].type]?.inputs.find(p => p.name === toPort)?.type;
+      if (toType === activeLink.portType) {
+        pushHistory();
+        graph.edges = graph.edges.filter(e => e.to !== `${toNode}.${toPort}`);
+        graph.edges.push({
+          from: `${activeLink.fromNode}.${activeLink.fromPort}`,
+          to: `${toNode}.${toPort}`
+        });
+        render();
+        renderValidation();
+      } else {
+        alert(`Cannot connect port of type ${activeLink.portType} to ${toType}`);
+      }
+    }
+    activeLink = null;
+    render();
+  }
+});
+
+svg.addEventListener("wheel", (ev) => {
+  ev.preventDefault();
+  const zoomFactor = ev.deltaY < 0 ? 1.1 : 0.9;
+  const newZoom = Math.min(Math.max(zoom * zoomFactor, 0.2), 3.0);
+  const r = svg.getBoundingClientRect();
+  const mouseX = ev.clientX - r.left;
+  const mouseY = ev.clientY - r.top;
+  panX = mouseX - (mouseX - panX) * (newZoom / zoom);
+  panY = mouseY - (mouseY - panY) * (newZoom / zoom);
+  zoom = newZoom;
+  updateViewport();
+}, { passive: false });
+
+// Inspector Rendering
+function renderInspector() {
+  const panel = document.getElementById("inspectorBody");
+  const delBtn = document.getElementById("deleteNodeBtn");
+  if (!selectedNodeId || !graph.nodes[selectedNodeId]) {
+    delBtn.style.display = "none";
+    panel.innerHTML = `<em style="color:var(--text-muted);">Select a node on the canvas to configure parameters and check approval gates.</em>`;
+    return;
+  }
+  delBtn.style.display = "inline-flex";
+  delBtn.onclick = () => {
+    pushHistory();
+    const id = selectedNodeId;
+    delete graph.nodes[id];
+    graph.edges = graph.edges.filter(e => !e.from.startsWith(id + ".") && !e.to.startsWith(id + "."));
+    selectedNodeId = null;
+    render();
+    renderInspector();
+    renderValidation();
+  };
+
+  const id = selectedNodeId;
+  const n = graph.nodes[id];
+  const t = nodeTypes[n.type];
+  panel.replaceChildren();
+
+  const titleEl = document.createElement("div");
+  titleEl.innerHTML = `<h3 style="margin:0 0 4px 0;">${id}</h3><div style="font-size:11px;color:var(--text-muted);">${t.label} &bull; ${t.category}</div>`;
+  panel.appendChild(titleEl);
+
+  // Gate Card Container
+  const gateContainer = document.createElement("div");
+  panel.appendChild(gateContainer);
+
+  function refreshGate() {
+    if (!t.gate) return;
+    fetch("/gate_check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: n.type, params: n.params })
+    }).then(r => r.json()).then(res => {
+      const gate = res.gate;
+      if (!gate) return;
+      gateContainer.replaceChildren();
+      const gateCard = document.createElement("div");
+      gateCard.className = `gate-card ${gate.locked ? "locked" : "approved"}`;
+      gateCard.innerHTML = `
+        <div class="gate-card-title">
+          <span>${gate.locked ? "🔒 Locked Approval Gate" : "✓ Approved Gate"}</span>
+          <span style="margin-left:auto;font-size:10px;font-weight:700;">${gate.decision}</span>
+        </div>
+        <div class="gate-card-desc">${gate.reason}</div>
+        <div style="font-size:10px;margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted);" title="${gate.config}"><code>${gate.config}</code></span>
+          <button class="primary" style="padding:2px 8px;font-size:10px;flex-shrink:0;" id="editConfigBtn">Edit Config</button>
+        </div>
+      `;
+      gateContainer.appendChild(gateCard);
+
+      const editBtn = gateCard.querySelector("#editConfigBtn");
+      if (editBtn) {
+        editBtn.onclick = (e) => {
+          e.stopPropagation();
+          openConfigModal(gate.config, () => {
+            refreshGate();
+            render();
+            renderValidation();
+          });
+        };
+      }
+    });
+  }
+  refreshGate();
+
+  // Parameter Form
+  const formTitle = document.createElement("div");
+  formTitle.style.fontWeight = "600";
+  formTitle.style.fontSize = "12px";
+  formTitle.textContent = "Parameters";
+  panel.appendChild(formTitle);
+
+  function onParamChange(key, val) {
+    pushHistory();
+    n.params[key] = val;
+    refreshGate();
+    renderValidation();
+  }
+
+  const schema = t.param_schema || {};
+  for (const [key, field] of Object.entries(schema)) {
+    const grp = document.createElement("div");
+    grp.className = "form-group";
+    const lbl = document.createElement("label");
+    lbl.textContent = field.label || key;
+    if (field.required) lbl.innerHTML += ` <span style="color:var(--bad);">*</span>`;
+
+    const curVal = n.params[key] !== undefined ? n.params[key] : (t.params[key] || "");
+
+    if (field.type === "file") {
+      const row = document.createElement("div");
+      row.className = "picker-row";
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.value = curVal;
+      inp.placeholder = field.placeholder || "";
+      inp.onchange = () => onParamChange(key, inp.value);
+
+      const sel = document.createElement("select");
+      sel.style.width = "75px";
+      sel.innerHTML = `<option value="">Browse...</option>`;
+      // Fetch files matching filter
+      const extStr = (field.filter || []).join(",");
+      fetch(`/files?ext=${extStr}`).then(r => r.json()).then(files => {
+        files.forEach(f => {
+          const opt = document.createElement("option");
+          opt.value = f.path;
+          opt.textContent = f.name;
+          sel.appendChild(opt);
+        });
+      });
+      sel.onchange = () => {
+        if (sel.value) {
+          inp.value = sel.value;
+          onParamChange(key, sel.value);
+        }
+      };
+      row.append(inp, sel);
+      grp.append(lbl, row);
+    } else if (field.type === "number") {
+      const inp = document.createElement("input");
+      inp.type = "number";
+      inp.value = curVal;
+      if (field.step) inp.step = field.step;
+      if (field.min !== undefined) inp.min = field.min;
+      inp.onchange = () => onParamChange(key, parseFloat(inp.value));
+      grp.append(lbl, inp);
+    } else if (field.type === "boolean") {
+      const checkRow = document.createElement("label");
+      checkRow.style.display = "flex";
+      checkRow.style.alignItems = "center";
+      checkRow.style.gap = "8px";
+      checkRow.style.cursor = "pointer";
+      const inp = document.createElement("input");
+      inp.type = "checkbox";
+      inp.checked = Boolean(curVal);
+      inp.onchange = () => onParamChange(key, inp.checked);
+      checkRow.append(inp, document.createTextNode(field.label || key));
+      grp.append(checkRow);
+    } else {
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.value = curVal;
+      if (field.suggestions) {
+        inp.setAttribute("list", `list_${key}`);
+        const dl = document.createElement("datalist");
+        dl.id = `list_${key}`;
+        field.suggestions.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s;
+          dl.appendChild(opt);
+        });
+        grp.appendChild(dl);
+      }
+      inp.onchange = () => onParamChange(key, inp.value);
+      grp.append(lbl, inp);
+    }
+
+    panel.appendChild(grp);
+  }
+
+  // Preview Action
+  const prevBtn = document.createElement("button");
+  prevBtn.className = "primary";
+  prevBtn.style.marginTop = "8px";
+  prevBtn.textContent = "Open Result Preview";
+  prevBtn.onclick = () => openPreviewModal(id);
+  panel.appendChild(prevBtn);
+}
+
+// Drawer Tabs
+document.querySelectorAll(".drawer-tab").forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll(".drawer-tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    currentTab = tab.dataset.tab;
+    renderDrawer();
+  };
+});
+
+function appendLog(line, node = "sys") {
+  const timeStr = new Date().toLocaleTimeString();
+  logs.push({ time: timeStr, line, node });
+  if (currentTab === "logs") {
+    const c = document.getElementById("drawerContent");
+    const d = document.createElement("div");
+    d.className = "log-line";
+    d.innerHTML = `<span class="log-time">${timeStr}</span><span class="log-node">[${node}]</span>${line}`;
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+  }
+}
+
+function renderDrawer() {
+  const c = document.getElementById("drawerContent");
+  c.replaceChildren();
+  if (currentTab === "logs") {
+    logs.forEach(l => {
+      const d = document.createElement("div");
+      d.className = "log-line";
+      d.innerHTML = `<span class="log-time">${l.time}</span><span class="log-node">[${l.node}]</span>${l.line}`;
+      c.appendChild(d);
+    });
+    c.scrollTop = c.scrollHeight;
+  } else if (currentTab === "history") {
+    fetch("/history").then(r => r.json()).then(runs => {
+      if (!runs.length) {
+        c.innerHTML = `<em>No runs recorded yet in runs/</em>`;
+        return;
+      }
+      const tbl = document.createElement("table");
+      tbl.className = "data-table";
+      tbl.innerHTML = `<tr><th>File</th><th>Stage</th><th>Slot</th><th>Code Rev</th><th>Video SHA</th></tr>`;
+      runs.forEach(r => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${r._file}</td>
+          <td>${r.stage || ""}</td>
+          <td>${r.slot || ""}</td>
+          <td><code>${(r.code_revision || "").slice(0, 8)}</code></td>
+          <td><code>${(r.video_sha256 || "").slice(0, 8)}</code></td>
+        `;
+        tbl.appendChild(tr);
+      });
+      c.appendChild(tbl);
+    });
+  } else if (currentTab === "validation") {
+    renderValidation();
+  }
+}
+
+function renderValidation() {
+  if (currentTab !== "validation") return;
+  const c = document.getElementById("drawerContent");
+  c.replaceChildren();
+  fetch("/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(graph)
+  }).then(r => r.json()).then(res => {
+    if (res.valid) {
+      c.innerHTML = `
+        <div style="color:var(--ok);font-weight:600;margin-bottom:6px;">✓ Graph topology is valid!</div>
+        <div><strong>Topological Execution Order:</strong> ${res.order.join(" &rarr; ")}</div>
+      `;
+    } else {
+      c.innerHTML = `
+        <div style="color:var(--bad);font-weight:600;margin-bottom:6px;">✗ Validation Error:</div>
+        <div>${res.error}</div>
+      `;
+    }
+  });
+}
+
+// Result Preview Modal
+const modal = document.getElementById("modal");
+document.getElementById("closeModalBtn").onclick = () => { modal.classList.remove("open"); };
+
+function openPreviewModal(nodeId) {
+  const title = document.getElementById("modalTitle");
+  const body = document.getElementById("modalBody");
+  title.textContent = `Result Preview: ${nodeId}`;
+  body.innerHTML = `<em>Loading preview for ${nodeId}...</em>`;
+  modal.classList.add("open");
+
+  fetch(`/preview/${nodeId}`).then(r => r.json()).then(data => {
+    body.replaceChildren();
+    if (!data.ready) {
+      body.innerHTML = `<div style="padding:20px;color:var(--warn);">${data.message}</div>`;
+      return;
+    }
+
+    // Video Player with Synced Canvas Overlay (for detect, track, cfr, undistort, count)
+    if (data.video_url) {
+      const vidWrap = document.createElement("div");
+      vidWrap.className = "video-container";
+
+      const vid = document.createElement("video");
+      vid.src = data.video_url;
+      vid.controls = true;
+      vid.autoplay = true;
+      vid.muted = true;
+      vid.loop = true;
+
+      const overlay = document.createElement("canvas");
+      vidWrap.append(vid, overlay);
+      body.appendChild(vidWrap);
+
+      // Track trajectory history cache: { trackId: [[x,y], ...] }
+      const trails = {};
+      const classColors = {
+        car: "#3b82f6",
+        two_wheeler: "#10b981",
+        bus: "#ef4444",
+        auto_rickshaw: "#f59e0b",
+        truck: "#8b5cf6"
+      };
+
+      // Draw overlay synchronized with currentTime using time_s
+      function syncOverlay() {
+        if (!vid.videoWidth || !vid.videoHeight) {
+          requestAnimationFrame(syncOverlay);
+          return;
+        }
+
+        const rect = vid.getBoundingClientRect();
+        overlay.width = rect.width;
+        overlay.height = rect.height;
+        const ctx = overlay.getContext("2d");
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+        const scaleX = rect.width / vid.videoWidth;
+        const scaleY = rect.height / vid.videoHeight;
+        const curTime = vid.currentTime;
+
+        // Draw counting lines if present
+        if (data.lines) {
+          data.lines.forEach(line => {
+            const [p1, p2] = line.endpoints_px;
+            ctx.strokeStyle = "#10b981";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(p1[0] * scaleX, p1[1] * scaleY);
+            ctx.lineTo(p2[0] * scaleX, p2[1] * scaleY);
+            ctx.stroke();
+            ctx.fillStyle = "#10b981";
+            ctx.font = "bold 12px sans-serif";
+            ctx.fillText(`${line.line_name} (${line.movement})`, p1[0] * scaleX + 5, p1[1] * scaleY - 5);
+          });
+        }
+
+        // Draw bounding boxes for tracks holding last box between rows
+        if (data.points && data.points.length) {
+          // Find active tracks visible at curTime (within last 0.8s)
+          const latestBoxes = {};
+          data.points.forEach(pt => {
+            if (pt.t <= curTime && curTime - pt.t <= 0.8) {
+              latestBoxes[pt.id] = pt;
+            }
+          });
+
+          for (const [tid, pt] of Object.entries(latestBoxes)) {
+            const [x1, y1, x2, y2] = pt.box;
+            const sx1 = x1 * scaleX, sy1 = y1 * scaleY;
+            const sx2 = x2 * scaleX, sy2 = y2 * scaleY;
+            const col = classColors[pt.c] || "#06b6d4";
+
+            // Record trail
+            const cx = (sx1 + sx2) / 2, cy = sy2;
+            if (!trails[tid]) trails[tid] = [];
+            trails[tid].push([cx, cy]);
+            if (trails[tid].length > 15) trails[tid].shift();
+
+            // Draw Trail
+            if (trails[tid].length > 1) {
+              ctx.strokeStyle = col;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              trails[tid].forEach((pos, i) => {
+                if (i === 0) ctx.moveTo(pos[0], pos[1]);
+                else ctx.lineTo(pos[0], pos[1]);
+              });
+              ctx.stroke();
+            }
+
+            // Draw Box
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
+
+            // Label tag
+            const tag = `#${tid} ${pt.c}`;
+            ctx.fillStyle = col;
+            ctx.fillRect(sx1, sy1 - 18, ctx.measureText(tag).width + 8, 18);
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 11px sans-serif";
+            ctx.fillText(tag, sx1 + 4, sy1 - 4);
+          }
+        }
+
+        requestAnimationFrame(syncOverlay);
+      }
+      requestAnimationFrame(syncOverlay);
+
+      // Sidebar with stats
+      const side = document.createElement("div");
+      side.className = "modal-sidebar";
+
+      if (data.total_tracks !== undefined) {
+        side.innerHTML += `
+          <div class="stats-card">
+            <div style="font-size:11px;color:var(--text-muted);">Unique Tracks</div>
+            <div class="stats-num">${data.total_tracks}</div>
+          </div>
+        `;
+      }
+      if (data.total_detections !== undefined) {
+        side.innerHTML += `
+          <div class="stats-card">
+            <div style="font-size:11px;color:var(--text-muted);">Total Detections</div>
+            <div class="stats-num">${data.total_detections}</div>
+          </div>
+        `;
+      }
+      if (data.class_counts) {
+        const tbl = document.createElement("table");
+        tbl.className = "data-table";
+        tbl.innerHTML = `<tr><th>Class</th><th>Count</th></tr>`;
+        for (const [c, cnt] of Object.entries(data.class_counts)) {
+          tbl.innerHTML += `<tr><td>${c}</td><td>${cnt}</td></tr>`;
+        }
+        side.appendChild(tbl);
+      }
+      if (data.line_totals) {
+        const tbl = document.createElement("table");
+        tbl.className = "data-table";
+        tbl.innerHTML = `<tr><th>Line</th><th>Crossings</th></tr>`;
+        for (const [l, cnt] of Object.entries(data.line_totals)) {
+          tbl.innerHTML += `<tr><td>${l}</td><td>${cnt}</td></tr>`;
+        }
+        side.appendChild(tbl);
+      }
+
+      body.appendChild(side);
+    } else {
+      // Table-based result viewer (for delay_queue, indicators, congestion)
+      const wrap = document.createElement("div");
+      wrap.style.flex = "1";
+      wrap.style.overflow = "auto";
+      wrap.style.padding = "16px";
+
+      const rows = data.indicators || data.congestion || data.stopped_delays || data.queues;
+      if (rows && rows.length) {
+        const tbl = document.createElement("table");
+        tbl.className = "data-table";
+        const keys = Object.keys(rows[0]);
+        let th = "<tr>";
+        keys.forEach(k => th += `<th>${k}</th>`);
+        th += "</tr>";
+        tbl.innerHTML = th;
+        rows.forEach(r => {
+          let tr = "<tr>";
+          keys.forEach(k => tr += `<td>${r[k] !== undefined ? r[k] : ""}</td>`);
+          tr += "</tr>";
+          tbl.innerHTML += tr;
+        });
+        wrap.appendChild(tbl);
+      } else {
+        wrap.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+      }
+      body.appendChild(wrap);
+    }
+  });
+}
+
+// Config Editor Modal
+const configModal = document.getElementById("configModal");
+let activeConfigPath = null;
+let onConfigSaveCallback = null;
+
+document.getElementById("closeConfigModalBtn").onclick = () => { configModal.classList.remove("open"); };
+document.getElementById("cancelConfigModalBtn").onclick = () => { configModal.classList.remove("open"); };
+
+function openConfigModal(configPath, onSave) {
+  activeConfigPath = configPath;
+  onConfigSaveCallback = onSave;
+  const title = document.getElementById("configModalTitle");
+  const help = document.getElementById("configModalHelp");
+  const editor = document.getElementById("configModalEditor");
+  const errEl = document.getElementById("configModalError");
+
+  title.textContent = `Edit Configuration: ${configPath}`;
+  errEl.style.display = "none";
+  errEl.textContent = "";
+
+  if (configPath.includes("definitions")) {
+    help.innerHTML = `<strong>Queue & Stopped-Speed Threshold (O6)</strong>: Fill in <code>stopped_speed_kmh</code> (e.g. 5.0), <code>speed_window_s</code> (e.g. 2.0), <code>max_gap_s</code> (e.g. 3.0), and approach zones. Set <code>approved: true</code> once approved by your project guide.`;
+  } else if (configPath.includes("indicators")) {
+    help.innerHTML = `<strong>PCU Table & Approach Widths (O3)</strong>: Select <code>pcu_table: table_3_1</code> or <code>table_III_1</code> (IRC SP 41), and verify approach widths (<code>width_m</code>) measured on site.`;
+  } else if (configPath.includes("congestion")) {
+    help.innerHTML = `<strong>Congestion Index Formula & Weights (O4)</strong>: Set weights summing to 1.0 (e.g. 0.4, 0.3, 0.3) and <code>approved: true</code> once confirmed by project guide.`;
+  } else {
+    help.textContent = `YAML Configuration file: ${configPath}. Ensure formatting is valid.`;
+  }
+
+  fetch(`/config?path=${encodeURIComponent(configPath)}`).then(r => r.json()).then(data => {
+    if (data.error) {
+      editor.value = `# Error reading config: ${data.error}`;
+    } else {
+      editor.value = data.content || "";
+    }
+    configModal.classList.add("open");
+  }).catch(e => {
+    editor.value = `# Error: ${e.message}`;
+    configModal.classList.add("open");
+  });
+}
+
+document.getElementById("saveConfigModalBtn").onclick = () => {
+  if (!activeConfigPath) return;
+  const editor = document.getElementById("configModalEditor");
+  const errEl = document.getElementById("configModalError");
+  errEl.style.display = "none";
+
+  fetch("/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: activeConfigPath, content: editor.value })
+  }).then(r => r.json()).then(res => {
+    if (res.error) {
+      errEl.style.display = "block";
+      errEl.textContent = res.error;
+    } else {
+      appendLog(`Saved configuration file: ${activeConfigPath}`, "sys");
+      configModal.classList.remove("open");
+      if (onConfigSaveCallback) onConfigSaveCallback();
+    }
+  }).catch(e => {
+    errEl.style.display = "block";
+    errEl.textContent = e.message;
+  });
 };
-document.getElementById("delBtn").onclick = () => { if (!sel) return; delete graph.nodes[sel];
-  graph.edges = graph.edges.filter(e => !e.from.startsWith(sel + ".") && !e.to.startsWith(sel + ".")); sel = null; draw(); side(); };
-document.getElementById("valBtn").onclick = async () => { const r = await post("/validate", graph); msg(r.valid ? "Valid. Order: " + r.order.join(" > ") : "Invalid: " + r.error); };
-document.getElementById("runBtn").onclick = async () => {
-  const res = await fetch("/run", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(graph)});
-  const r = await res.json(); if (!res.ok) return msg("Invalid: " + r.error);
-  status = r.status; draw();
-  msg(Object.entries(r.errors).map(([k, v]) => `${k}: ${v}`).join(" | ") || "All nodes completed");
+
+// Execution Controls
+const runBtn = document.getElementById("runBtn");
+const runSelectedBtn = document.getElementById("runSelectedBtn");
+const stopBtn = document.getElementById("stopBtn");
+
+function updateRunState(st) {
+  executionState.state = st;
+  runBtn.disabled = (st === "running");
+  runSelectedBtn.disabled = (st === "running");
+  stopBtn.disabled = (st !== "running");
+}
+
+runBtn.onclick = () => {
+  appendLog("Starting pipeline execution...", "sys");
+  updateRunState("running");
+  fetch("/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ graph })
+  }).then(r => r.json()).then(res => {
+    if (!res.started) {
+      appendLog(`Run error: ${res.error}`, "sys");
+      updateRunState("idle");
+    }
+  });
 };
+
+runSelectedBtn.onclick = () => {
+  if (!selectedNodeId) {
+    alert("Select a node on the canvas first.");
+    return;
+  }
+  appendLog(`Running pipeline up to target node: ${selectedNodeId}...`, "sys");
+  updateRunState("running");
+  fetch("/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ graph, target_node_id: selectedNodeId })
+  }).then(r => r.json()).then(res => {
+    if (!res.started) {
+      appendLog(`Run error: ${res.error}`, "sys");
+      updateRunState("idle");
+    }
+  });
+};
+
+stopBtn.onclick = () => {
+  appendLog("Stopping execution...", "sys");
+  fetch("/stop", { method: "POST" }).then(r => r.json()).then(() => {
+    updateRunState("stopped");
+  });
+};
+
+// Auto Tidy Layout (Topological rank DAG)
+document.getElementById("tidyBtn").onclick = () => {
+  fetch("/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(graph)
+  }).then(r => r.json()).then(res => {
+    if (!res.valid) return alert(`Cannot tidy: ${res.error}`);
+    pushHistory();
+    const ranks = {};
+    res.order.forEach(id => ranks[id] = 0);
+    graph.edges.forEach(e => {
+      const [u] = e.from.split(".");
+      const [v] = e.to.split(".");
+      if (ranks[v] !== undefined && ranks[u] !== undefined) {
+        ranks[v] = Math.max(ranks[v], ranks[u] + 1);
+      }
+    });
+    const rankCols = {};
+    for (const [id, rk] of Object.entries(ranks)) {
+      if (!rankCols[rk]) rankCols[rk] = [];
+      rankCols[rk].push(id);
+    }
+    Object.entries(rankCols).forEach(([rk, ids]) => {
+      ids.forEach((id, row) => {
+        graph.nodes[id].pos = [40 + parseInt(rk) * 260, 40 + row * 130];
+      });
+    });
+    render();
+  });
+};
+
+// Undo / Redo
+document.getElementById("undoBtn").onclick = () => {
+  if (historyStack.length > 0) {
+    redoStack.push(JSON.stringify(graph));
+    graph = JSON.parse(historyStack.pop());
+    render();
+    renderInspector();
+  }
+};
+document.getElementById("redoBtn").onclick = () => {
+  if (redoStack.length > 0) {
+    historyStack.push(JSON.stringify(graph));
+    graph = JSON.parse(redoStack.pop());
+    render();
+    renderInspector();
+  }
+};
+
+// Zoom Buttons
+document.getElementById("zoomResetBtn").onclick = () => { zoom = 1.0; panX = 40; panY = 40; updateViewport(); };
+document.getElementById("zoomFitBtn").onclick = () => {
+  const nodeKeys = Object.keys(graph.nodes);
+  if (!nodeKeys.length) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  nodeKeys.forEach(k => {
+    const [x, y] = graph.nodes[k].pos;
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + NODE_WIDTH); maxY = Math.max(maxY, y + 140);
+  });
+  const r = svg.getBoundingClientRect();
+  const scale = Math.min((r.width - 80) / (maxX - minX), (r.height - 80) / (maxY - minY), 1.5);
+  zoom = Math.max(scale, 0.4);
+  panX = (r.width - (maxX - minX) * zoom) / 2 - minX * zoom;
+  panY = (r.height - (maxY - minY) * zoom) / 2 - minY * zoom;
+  updateViewport();
+};
+
+// Export & Import
 document.getElementById("expBtn").onclick = () => {
-  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(graph, null, 2)], {type:"application/json"}));
-  a.download = "pipeline.json"; a.click(); };
-document.getElementById("impBtn").onclick = () => { const i = document.createElement("input"); i.type = "file"; i.accept = ".json";
-  i.onchange = async () => { graph = JSON.parse(await i.files[0].text()); status = {}; sel = null; draw(); side(); }; i.click(); };
+  const blob = new Blob([JSON.stringify(graph, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "pattom_pipeline.json";
+  a.click();
+};
+document.getElementById("impBtn").onclick = () => {
+  const inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = ".json,.yaml,.yml";
+  inp.onchange = async () => {
+    try {
+      pushHistory();
+      const txt = await inp.files[0].text();
+      graph = JSON.parse(txt);
+      render();
+      renderInspector();
+    } catch (e) {
+      alert("Invalid graph file: " + e.message);
+    }
+  };
+  inp.click();
+};
+
+// Load Demo Preset
+document.getElementById("presetBtn").onclick = () => {
+  pushHistory();
+  graph = {
+    nodes: {
+      cfr: { type: "cfr", params: { video: "raw-video/IMG_1480.MOV", out: "data/cfr/IMG_1480.mp4", slot: "test", fps: 30.0 }, pos: [40, 40] },
+      detect: { type: "detect", params: { slot: "test", config: "configs/detection.yaml" }, pos: [300, 40] },
+      track: { type: "track", params: { config: "configs/tracker.yaml" }, pos: [560, 40] },
+      ground: { type: "ground", params: { config: "calibration/ground.yaml" }, pos: [820, 40] },
+      count: { type: "count", params: { lines: "configs/lines.yaml", interval_s: 900.0, offset_s: 0.0 }, pos: [1080, 40] },
+      delay_queue: { type: "delay_queue", params: { definitions: "configs/definitions.yaml", allow_draft: true }, pos: [1080, 190] },
+      indicators: { type: "indicators", params: { config: "configs/indicators.yaml" }, pos: [1340, 40] },
+      emissions: { type: "emissions", params: { config: "configs/emissions.yaml" }, pos: [1340, 190] },
+      congestion: { type: "congestion", params: { formula: "configs/congestion.yaml" }, pos: [1600, 40] }
+    },
+    edges: [
+      { from: "cfr.video", to: "detect.video" },
+      { from: "detect.detections", to: "track.detections" },
+      { from: "track.tracks", to: "ground.tracks" },
+      { from: "ground.tracks", to: "count.tracks" },
+      { from: "ground.tracks", to: "delay_queue.tracks" },
+      { from: "count.counts", to: "indicators.counts" },
+      { from: "delay_queue.delays", to: "indicators.delays" },
+      { from: "delay_queue.delays", to: "emissions.delays" },
+      { from: "indicators.indicators", to: "congestion.indicators" }
+    ]
+  };
+  render();
+  renderInspector();
+  renderValidation();
+  appendLog("Loaded Pattom demo pipeline preset.", "sys");
+};
+
+// Palette Setup
+function setupPalette() {
+  const list = document.getElementById("paletteList");
+  list.replaceChildren();
+  const search = document.getElementById("paletteSearch").value.toLowerCase();
+
+  const byCat = {};
+  Object.values(nodeTypes).forEach(t => {
+    if (search && !t.name.toLowerCase().includes(search) && !t.label.toLowerCase().includes(search)) return;
+    if (!byCat[t.category]) byCat[t.category] = [];
+    byCat[t.category].push(t);
+  });
+
+  for (const [cat, types] of Object.entries(byCat)) {
+    const hdr = document.createElement("div");
+    hdr.className = "cat-header";
+    hdr.textContent = cat;
+    list.appendChild(hdr);
+
+    types.forEach(t => {
+      const item = document.createElement("div");
+      item.className = "palette-item";
+      item.innerHTML = `
+        <span class="item-type">${t.name}</span>
+        <span class="item-badge">${t.outputs.map(p => p.type).join(", ") || "sink"}</span>
+      `;
+      item.onclick = () => {
+        pushHistory();
+        let i = 1;
+        while (graph.nodes[`${t.name}${i}`]) i++;
+        const newId = `${t.name}${i}`;
+        // Place in center of current viewport
+        const center = screenToWorld(svg.clientWidth / 2, svg.clientHeight / 2);
+        graph.nodes[newId] = {
+          type: t.name,
+          params: {},
+          pos: [Math.round(center.x / 10) * 10, Math.round(center.y / 10) * 10]
+        };
+        selectedNodeId = newId;
+        render();
+        renderInspector();
+        renderValidation();
+      };
+      list.appendChild(item);
+    });
+  }
+}
+document.getElementById("paletteSearch").oninput = setupPalette;
+
+// Server-Sent Events (SSE) Listener for real-time updates
+function initEventSource() {
+  const es = new EventSource("/events");
+  es.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "init") {
+        executionState = msg.state;
+        updateRunState(msg.state.state);
+        render();
+      } else if (msg.type === "status") {
+        const d = msg.data;
+        executionState.status[d.node] = d.status;
+        if (d.elapsed !== undefined) executionState.elapsed[d.node] = d.elapsed;
+        if (d.error) executionState.errors[d.node] = d.error;
+        render();
+      } else if (msg.type === "log") {
+        appendLog(msg.data.line, msg.data.node);
+      } else if (msg.type === "done") {
+        updateRunState(msg.data.state);
+        appendLog(`Pipeline finished with state: ${msg.data.state}`, "sys");
+        render();
+      } else if (msg.type === "status_change") {
+        updateRunState(msg.data.state);
+        render();
+      }
+    } catch (e) {}
+  };
+  es.onerror = () => {
+    setTimeout(initEventSource, 3000);
+  };
+}
+
+// Initial Initialization
 (async () => {
-  types = Object.fromEntries((await (await fetch("/nodes")).json()).map(t => [t.name, t]));
-  document.getElementById("add").replaceChildren(...Object.keys(types).map(k => Object.assign(document.createElement("option"), {value:k, textContent:k})));
-  graph = {nodes:{}, edges:[]}; draw();
+  const resp = await fetch("/nodes");
+  const typesList = await resp.json();
+  nodeTypes = Object.fromEntries(typesList.map(t => [t.name, t]));
+  setupPalette();
+
+  // Load initial preset
+  document.getElementById("presetBtn").click();
+  initEventSource();
 })();
 </script>
 </body>
