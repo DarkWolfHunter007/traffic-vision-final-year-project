@@ -18,6 +18,7 @@ import json
 import mimetypes
 import os
 import queue
+import sys
 import threading
 import time
 import urllib.parse
@@ -737,13 +738,22 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+class QuietServer(ThreadingHTTPServer):
+    """Browsers drop connections on refresh or tab close; that is not an error."""
+
+    def handle_error(self, request, client_address) -> None:
+        if isinstance(sys.exc_info()[1], (ConnectionError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
+
+
 def serve(port: int = 8765, open_browser: bool = True) -> None:
-    ThreadingHTTPServer.allow_reuse_address = False
+    QuietServer.allow_reuse_address = False
 
     selected_port = port
     url = f"http://127.0.0.1:{selected_port}/"
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", selected_port), Handler)
+        server = QuietServer(("127.0.0.1", selected_port), Handler)
     except OSError:
         # Single instance: if our editor already serves this port, reuse it.
         try:
