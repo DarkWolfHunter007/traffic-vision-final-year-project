@@ -1278,7 +1278,7 @@ function openPreviewModal(nodeId) {
   body.innerHTML = `<em>Loading preview for ${nodeId}...</em>`;
   modal.classList.add("open");
 
-  fetch(`/preview/${nodeId}`).then(r => r.json()).then(data => {
+  fetch("/preview", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({node_id: nodeId, graph})}).then(r => r.json()).then(data => {
     body.replaceChildren();
     if (!data.ready) {
       body.innerHTML = `<div style="padding:20px;color:var(--warn);">${data.message}</div>`;
@@ -1319,6 +1319,8 @@ function openPreviewModal(nodeId) {
         }
 
         const rect = vid.getBoundingClientRect();
+        overlay.style.left = vid.offsetLeft + "px";
+        overlay.style.top = vid.offsetTop + "px";
         overlay.width = rect.width;
         overlay.height = rect.height;
         const ctx = overlay.getContext("2d");

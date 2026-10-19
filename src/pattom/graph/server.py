@@ -279,6 +279,12 @@ def generate_node_preview(node_id: str, spec: dict[str, Any] | None = None) -> d
                         return _media_rel(src_params["out"])
                     if src_params.get("video") and Path(src_params["video"]).is_file():
                         return _media_rel(src_params["video"])
+        # Fallback (e.g. after an editor restart, when no run spec is held):
+        # runs/<slot>/<stem>/ pairs with data/cfr/<stem>.mp4
+        for out_path in outputs.values():
+            cfr_mp4 = REPO_ROOT / "data" / "cfr" / f"{Path(out_path).parent.name}.mp4"
+            if cfr_mp4.is_file():
+                return _media_rel(str(cfr_mp4))
         return None
 
     if node_type in ("cfr", "undistort"):
@@ -495,7 +501,7 @@ class Handler(BaseHTTPRequestHandler):
                         self.wfile.write(buf)
                         rem -= len(buf)
                 return
-            except (ConnectionResetError, BrokenPipeError):
+            except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
                 return
             except Exception:
                 pass
@@ -515,7 +521,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not buf:
                         break
                     self.wfile.write(buf)
-        except (ConnectionResetError, BrokenPipeError):
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
             pass
 
     def do_HEAD(self) -> None:
@@ -576,7 +582,7 @@ class Handler(BaseHTTPRequestHandler):
                         # Keep-alive heartbeat comment
                         self.wfile.write(b": keepalive\n\n")
                         self.wfile.flush()
-            except (ConnectionResetError, BrokenPipeError):
+            except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
                 pass
             finally:
                 EXEC_MGR.unsubscribe(q)
@@ -669,6 +675,10 @@ class Handler(BaseHTTPRequestHandler):
                 force = bool(payload.get("force", False))
                 run_id = EXEC_MGR.start_run(spec, target_node_id=target, force=force)
                 self._json(200, {"started": True, "run_id": run_id, "state": "running"})
+
+            elif route == "/preview":
+                # The editor sends its current graph so previews work after a restart.
+                self._json(200, generate_node_preview(str(payload.get("node_id", "")), payload.get("graph")))
 
             elif route == "/stop":
                 EXEC_MGR.stop_run()
