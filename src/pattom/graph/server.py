@@ -21,6 +21,7 @@ import queue
 import threading
 import time
 import urllib.parse
+import urllib.request
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -727,21 +728,24 @@ class Handler(BaseHTTPRequestHandler):
 def serve(port: int = 8765, open_browser: bool = True) -> None:
     ThreadingHTTPServer.allow_reuse_address = False
 
-    server = None
     selected_port = port
-    for p in range(port, port + 10):
-        try:
-            server = ThreadingHTTPServer(("127.0.0.1", p), Handler)
-            selected_port = p
-            break
-        except OSError:
-            print(f"Port {p} is in use, checking port {p + 1}...")
-            continue
-
-    if server is None:
-        raise OSError(f"Could not bind to any port in range {port} to {port + 10}")
-
     url = f"http://127.0.0.1:{selected_port}/"
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", selected_port), Handler)
+    except OSError:
+        # Single instance: if our editor already serves this port, reuse it.
+        try:
+            with urllib.request.urlopen(f"{url}nodes", timeout=2) as r:
+                running = r.status == 200
+        except Exception:
+            running = False
+        if not running:
+            raise OSError(f"Port {selected_port} is in use by another program; use --port.")
+        print(f"The editor is already running at {url}; opening it instead of starting another.")
+        if open_browser:
+            webbrowser.open(url)
+        return
+
     print(f"\n==================================================================")
     print(f" Traffic Vision Visual Editor started at {url}")
     print(f" Bound strictly to 127.0.0.1 (Windows/Local PC). Press Ctrl+C to stop.")
