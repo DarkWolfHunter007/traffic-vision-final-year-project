@@ -887,7 +887,7 @@ function render() {
     const ftr = document.createElement("div");
     ftr.className = "node-footer";
     const elTime = executionState.elapsed[id];
-    const timeText = elTime !== undefined ? `${elTime.toFixed(2)}s` : "";
+    const timeText = typeof elTime === "number" ? `${elTime.toFixed(2)}s` : "";
     ftr.innerHTML = `<span>${timeText}</span>`;
 
     // Preview button
@@ -1779,7 +1779,7 @@ function initEventSource() {
       } else if (msg.type === "status") {
         const d = msg.data;
         executionState.status[d.node] = d.status;
-        if (d.elapsed !== undefined) executionState.elapsed[d.node] = d.elapsed;
+        if (d.elapsed != null) executionState.elapsed[d.node] = d.elapsed;
         if (d.error) executionState.errors[d.node] = d.error;
         render();
       } else if (msg.type === "log") {
