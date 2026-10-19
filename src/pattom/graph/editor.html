@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traffic Vision - Node Editor</title>
+<style>
+  :root { --bg:#f6f7f9; --fg:#1b1f24; --card:#fff; --line:#8a94a3; --ok:#1a7f37; --bad:#c62828; --warn:#b26a00; --gate:#6a3fb5; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14171a; --fg:#e6e8eb; --card:#1f2429; --line:#7b8594; --ok:#4cc26a; --bad:#ff6b6b; --warn:#e0a040; --gate:#b394f0; } }
+  body { margin:0; font:14px system-ui,sans-serif; background:var(--bg); color:var(--fg); display:flex; flex-direction:column; height:100vh; }
+  header { padding:8px 16px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; border-bottom:1px solid var(--line); }
+  header h1 { font-size:16px; margin:0 8px 0 0; }
+  button, select { font:inherit; padding:4px 10px; }
+  #wrap { flex:1; display:flex; min-height:0; }
+  svg { flex:1; min-width:0; }
+  #side { width:280px; padding:12px; border-left:1px solid var(--line); overflow:auto; }
+  #msg { padding:6px 16px; border-top:1px solid var(--line); min-height:20px; }
+  .node rect { fill:var(--card); stroke:var(--line); stroke-width:1.5; rx:6; }
+  
+  .node.sel rect { stroke-width:3; }
+  .node.completed rect { stroke:var(--ok); } .node.failed rect { stroke:var(--bad); } .node.skipped rect { stroke:var(--warn); }
+  .node text { fill:var(--fg); font-size:12px; pointer-events:none; }
+  .port { fill:var(--line); cursor:crosshair; } .port:hover { fill:var(--ok); }
+  .edge { stroke:var(--line); fill:none; stroke-width:2; }
+  textarea { width:100%; height:120px; font:12px monospace; box-sizing:border-box; }
+  label { display:block; margin:8px 0 2px; font-weight:600; }
+  input[type=text] { width:100%; box-sizing:border-box; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Traffic Vision pipeline</h1>
+  <select id="add"></select><button id="addBtn">Add node</button>
+  <button id="delBtn">Delete selected</button>
+  <button id="valBtn">Validate</button><button id="runBtn">Run</button>
+  <button id="expBtn">Export JSON</button><button id="impBtn">Import JSON</button>
+</header>
+<div id="wrap">
+  <svg id="canvas"></svg>
+  <div id="side"><em>Select a node to edit its parameters. Drag from an output dot to an input dot to connect.</em></div>
+</div>
+<div id="msg"></div>
+<script>
+const NS = "http://www.w3.org/2000/svg", W = 190, ROW = 20, HEAD = 26;
+let types = {}, graph = {nodes:{}, edges:[]}, sel = null, status = {}, drag = null, link = null;
+const svg = document.getElementById("canvas"), msg = t => document.getElementById("msg").textContent = t;
+const el = (n, a = {}, p = svg) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+const rows = t => Math.max(t.inputs.length, t.outputs.length, 1);
+const portPos = (id, port, out) => { const n = graph.nodes[id], t = types[n.type];
+  const i = (out ? t.outputs : t.inputs).findIndex(p => p.name === port);
+  return [n.pos[0] + (out ? W : 0), n.pos[1] + HEAD + ROW * i + ROW / 2]; };
+
+function draw() {
+  svg.replaceChildren();
+  for (const e of graph.edges) {
+    const [fn, fp] = e.from.split("."), [tn, tp] = e.to.split(".");
+    if (!graph.nodes[fn] || !graph.nodes[tn]) continue;
+    const [x1, y1] = portPos(fn, fp, true), [x2, y2] = portPos(tn, tp, false), dx = Math.max(40, Math.abs(x2 - x1) / 2);
+    const p = el("path", {class:"edge", d:`M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`});
+    p.addEventListener("dblclick", () => { graph.edges = graph.edges.filter(x => x !== e); draw(); });
+  }
+  if (link) el("path", {class:"edge", d:`M${link.x1},${link.y1} L${link.x2},${link.y2}`});
+  for (const [id, n] of Object.entries(graph.nodes)) {
+    const t = types[n.type]; if (!t) continue;
+    const g = el("g", {class:`node ${status[id] || ""} ${sel === id ? "sel" : ""}`,
+      transform:`translate(${n.pos[0]},${n.pos[1]})`});
+    el("rect", {width:W, height:HEAD + ROW * rows(t) + 4}, g);
+    const title = el("text", {x:8, y:17}, g); title.textContent = `${id} - ${t.label}`;
+    g.addEventListener("mousedown", ev => { sel = id; drag = {id, dx:ev.clientX - n.pos[0], dy:ev.clientY - n.pos[1]}; side(); });
+    t.inputs.forEach((p, i) => { const c = el("circle", {class:"port", cx:0, cy:HEAD + ROW * i + ROW / 2, r:5}, g);
+      c.dataset.node = id; c.dataset.port = p.name; c.dataset.dir = "in";
+      const l = el("text", {x:10, y:HEAD + ROW * i + 14}, g); l.textContent = `${p.name}: ${p.type}`; });
+    t.outputs.forEach((p, i) => { const c = el("circle", {class:"port", cx:W, cy:HEAD + ROW * i + ROW / 2, r:5}, g);
+      c.dataset.node = id; c.dataset.port = p.name; c.dataset.dir = "out";
+      c.addEventListener("mousedown", ev => { ev.stopPropagation(); const [x, y] = portPos(id, p.name, true); link = {from:`${id}.${p.name}`, x1:x, y1:y, x2:x, y2:y}; });
+      const l = el("text", {x:W - 10, y:HEAD + ROW * i + 14, "text-anchor":"end"}, g); l.textContent = `${p.name}: ${p.type}`; });
+  }
+}
+function side() {
+  const s = document.getElementById("side"); s.replaceChildren();
+  if (!sel) return;
+  const n = graph.nodes[sel], t = types[n.type];
+  s.append(Object.assign(document.createElement("h3"), {textContent:`${sel} (${t.name})`}));
+  if (t.required.length) s.append(Object.assign(document.createElement("p"), {textContent:`Required: ${t.required.join(", ")}. Approval gates (O3, O4, O6) are enforced by the stages from their config files.`}));
+  const ta = document.createElement("textarea");
+  ta.value = JSON.stringify({...t.params, ...(n.params || {})}, null, 2);
+  ta.onchange = () => { try { n.params = JSON.parse(ta.value); msg("Parameters updated"); } catch (e) { msg("Invalid JSON: " + e.message); } };
+  s.append(Object.assign(document.createElement("label"), {textContent:"Parameters (JSON)"}), ta);
+}
+svg.addEventListener("mousemove", ev => {
+  if (drag) { const n = graph.nodes[drag.id]; n.pos = [ev.clientX - drag.dx, ev.clientY - drag.dy]; draw(); }
+  else if (link) { const r = svg.getBoundingClientRect(); link.x2 = ev.clientX - r.left; link.y2 = ev.clientY - r.top; draw(); }
+});
+window.addEventListener("mouseup", ev => {
+  if (link) {
+    const c = ev.target.dataset;
+    if (c && c.dir === "in") {
+      graph.edges = graph.edges.filter(e => e.to !== `${c.node}.${c.port}`);
+      graph.edges.push({from:link.from, to:`${c.node}.${c.port}`});
+    }
+    link = null;
+  }
+  drag = null; draw();
+});
+const post = async (path, body) => (await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})).json();
+document.getElementById("addBtn").onclick = () => {
+  const t = document.getElementById("add").value; let i = 1; while (graph.nodes[`${t}${i}`]) i++;
+  graph.nodes[`${t}${i}`] = {type:t, params:{}, pos:[40 + 20 * i, 40 + 20 * i]}; draw();
+};
+document.getElementById("delBtn").onclick = () => { if (!sel) return; delete graph.nodes[sel];
+  graph.edges = graph.edges.filter(e => !e.from.startsWith(sel + ".") && !e.to.startsWith(sel + ".")); sel = null; draw(); side(); };
+document.getElementById("valBtn").onclick = async () => { const r = await post("/validate", graph); msg(r.valid ? "Valid. Order: " + r.order.join(" > ") : "Invalid: " + r.error); };
+document.getElementById("runBtn").onclick = async () => {
+  const res = await fetch("/run", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(graph)});
+  const r = await res.json(); if (!res.ok) return msg("Invalid: " + r.error);
+  status = r.status; draw();
+  msg(Object.entries(r.errors).map(([k, v]) => `${k}: ${v}`).join(" | ") || "All nodes completed");
+};
+document.getElementById("expBtn").onclick = () => {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(graph, null, 2)], {type:"application/json"}));
+  a.download = "pipeline.json"; a.click(); };
+document.getElementById("impBtn").onclick = () => { const i = document.createElement("input"); i.type = "file"; i.accept = ".json";
+  i.onchange = async () => { graph = JSON.parse(await i.files[0].text()); status = {}; sel = null; draw(); side(); }; i.click(); };
+(async () => {
+  types = Object.fromEntries((await (await fetch("/nodes")).json()).map(t => [t.name, t]));
+  document.getElementById("add").replaceChildren(...Object.keys(types).map(k => Object.assign(document.createElement("option"), {value:k, textContent:k})));
+  graph = {nodes:{}, edges:[]}; draw();
+})();
+</script>
+</body>
+</html>

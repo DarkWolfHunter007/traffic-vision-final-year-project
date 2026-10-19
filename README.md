@@ -24,6 +24,16 @@ This is a fresh start (14 Oct 2026) built only from the documents in `docs/proje
 | `docs/project/IRC_SP41_extract.md` | IRC SP 41 (1994) extract. |
 | `docs/project/EMISSION_SOURCES.md` | Emission sources. |
 
+## Node-graph pipeline
+
+Each stage is a node with typed ports, wired by a graph file (example: `configs/graphs/pattom.example.yaml`). Nodes wrap the existing stage functions and pass file paths, so results and `.run.json` provenance are identical to the single commands. Open decisions (O3, O4, O6) are still enforced by the stages from their config files; the graph cannot bypass them.
+
+```text
+uv run pattom graph configs/graphs/pattom.example.yaml --validate-only
+uv run pattom graph my_pipeline.yaml
+uv run pattom editor        # visual node editor at http://127.0.0.1:8765/
+```
+
 ## Built so far
 
 | Stage | Module | Status |

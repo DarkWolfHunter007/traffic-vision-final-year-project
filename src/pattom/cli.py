@@ -113,6 +113,25 @@ def _congestion(args) -> None:
     print(run_congestion(Path(args.indicators), Path(args.formula)))
 
 
+def _graph(args) -> None:
+    from pattom.graph import load_graph, run_graph, validate_graph
+
+    spec = load_graph(Path(args.graph))
+    if args.validate_only:
+        print(json.dumps({"valid": True, "order": validate_graph(spec)}))
+        return
+    r = run_graph(spec)
+    print(json.dumps({"order": r.order, "status": r.status, "errors": r.errors, "outputs": r.outputs}, indent=2))
+    if any(v != "completed" for v in r.status.values()):
+        raise SystemExit(1)
+
+
+def _editor(args) -> None:
+    from pattom.graph.server import serve
+
+    serve(args.port)
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="pattom")
     sub = p.add_subparsers(required=True)
@@ -204,6 +223,15 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("indicators")
     s.add_argument("--formula", default=str(REPO_ROOT / "configs" / "congestion.yaml"))
     s.set_defaults(func=_congestion)
+
+    s = sub.add_parser("graph", help="validate and run a node-graph pipeline file")
+    s.add_argument("graph")
+    s.add_argument("--validate-only", action="store_true")
+    s.set_defaults(func=_graph)
+
+    s = sub.add_parser("editor", help="open the local visual node editor")
+    s.add_argument("--port", type=int, default=8765)
+    s.set_defaults(func=_editor)
 
     args = p.parse_args(argv)
     args.func(args)
