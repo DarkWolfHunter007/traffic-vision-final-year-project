@@ -1295,14 +1295,23 @@ function openPreviewModal(nodeId) {
 
     // Download bar: every result file of this step
     if (data.files && data.files.length) {
-      const bar = document.createElement("div");
-      bar.style.cssText = "position:absolute; top:10px; right:56px; display:flex; gap:6px; flex-wrap:wrap; max-width:60%; justify-content:flex-end; z-index:5;";
-      data.files.forEach(f => {
+      // One "Download" button; the list of files opens under it
+      const bar = document.createElement("details");
+      bar.style.cssText = "position:absolute; top:10px; right:56px; z-index:7; font-size:12px;";
+      const sum = document.createElement("summary");
+      sum.textContent = `⬇ Download (${data.files.length})`;
+      sum.style.cssText = "cursor:pointer; list-style:none; padding:4px 10px; border:1px solid var(--panel-border); border-radius:5px; background:rgba(255,255,255,0.04);";
+      const list = document.createElement("div");
+      list.style.cssText = "position:absolute; right:0; margin-top:4px; min-width:240px; max-height:320px; overflow:auto; background:#0f172a; border:1px solid var(--panel-border); border-radius:6px; padding:4px; box-shadow:0 8px 20px rgba(0,0,0,.5);";
+      data.files.forEach((f, i) => {
         const a = document.createElement("a");
-        a.href = f.url; a.download = f.name; a.textContent = `⬇ ${f.name}`; a.title = `${f.size_kb} KB`;
-        a.style.cssText = "font-size:11px; padding:3px 8px; border:1px solid var(--panel-border); border-radius:5px; color:var(--text); text-decoration:none; background:rgba(255,255,255,0.04);";
-        bar.appendChild(a);
+        a.href = f.url; a.download = f.name;
+        a.innerHTML = `${i === 0 ? "<b>" : ""}${f.name}${i === 0 ? "</b> (this step)" : ""} <span style="color:var(--text-muted);">${f.size_kb} KB</span>`;
+        a.style.cssText = "display:block; padding:4px 8px; color:var(--text); text-decoration:none; border-radius:4px;";
+        a.onmouseenter = () => a.style.background = "rgba(255,255,255,0.06)"; a.onmouseleave = () => a.style.background = "";
+        list.appendChild(a);
       });
+      bar.append(sum, list);
       document.querySelector("#modal .modal-box").style.position = "relative";
       document.querySelectorAll("#modal .dl-bar").forEach(x => x.remove());
       bar.className = "dl-bar";
