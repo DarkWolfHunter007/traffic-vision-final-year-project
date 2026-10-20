@@ -1311,6 +1311,16 @@ function openPreviewModal(nodeId) {
       document.querySelectorAll("#modal .dl-bar").forEach(x => x.remove());
     }
 
+    // SUMO steps: a button that opens both cases in SUMO-GUI on this PC
+    if (["sumo_inputs", "sumo_run", "comparison"].includes(data.type)) {
+      const b = document.createElement("button");
+      b.className = "primary"; b.textContent = "▶ Open in SUMO (existing vs selected)";
+      b.style.cssText = "margin:12px 16px 0;";
+      b.onclick = () => fetch("/sumo_gui", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ graph }) })
+        .then(r => r.json()).then(d => appendLog(d.error ? "SUMO: " + d.error : `SUMO-GUI opened for ${d.folder}`, "sys"));
+      body.appendChild(b);
+    }
+
     // Review: a gallery of flagged tracks, each with a cropped picture and its box
     if (data.flags) {
       const wrap = document.createElement("div");

@@ -18,6 +18,7 @@ import json
 import mimetypes
 import os
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -801,6 +802,29 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/preview":
                 # The editor sends its current graph so previews work after a restart.
                 self._json(200, generate_node_preview(str(payload.get("node_id", "")), payload.get("graph")))
+
+            elif route == "/sumo_gui":
+                # Open SUMO-GUI for the existing case and the selected alternative, side by side
+                from pattom.sumo import sumo_tool
+
+                spec = payload.get("graph") or EXEC_MGR.active_spec or {}
+                folder = None
+                for nid, n in (spec.get("nodes") or {}).items():
+                    if n.get("type") in ("sumo_inputs", "sumo_run", "comparison"):
+                        outs = _get_node_outputs(nid, spec) or {}
+                        for v in outs.values():
+                            cand = Path(v).parent
+                            if (cand / "existing.sumocfg").is_file():
+                                folder = cand
+                if folder is None:
+                    self._json(404, {"error": "No SUMO set-up yet: run the sumo_inputs node first."})
+                    return
+                gui = sumo_tool("sumo-gui")
+                for i, case in enumerate(("existing", "selected")):
+                    subprocess.Popen([gui, "-c", str(folder / f"{case}.sumocfg"), "--delay", "50",
+                                      "--window-size", "900,700", "--window-pos", f"{i * 920},40",
+                                      "--start", "true", "--quit-on-end", "false"], cwd=str(folder))
+                self._json(200, {"opened": True, "folder": str(folder.relative_to(REPO_ROOT))})
 
             elif route == "/calib/ground_check":
                 self._json(200, calib.check_ground(payload.get("mapping") or {}))
