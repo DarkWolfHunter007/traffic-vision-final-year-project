@@ -1315,10 +1315,69 @@ function openPreviewModal(nodeId) {
     if (["sumo_inputs", "sumo_run", "comparison"].includes(data.type)) {
       const b = document.createElement("button");
       b.className = "primary"; b.textContent = "▶ Open in SUMO (existing vs selected)";
-      b.style.cssText = "margin:12px 16px 0;";
+      b.style.cssText = "position:absolute; top:9px; left:240px; z-index:6; font-size:12px; padding:4px 10px;";
       b.onclick = () => fetch("/sumo_gui", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ graph }) })
         .then(r => r.json()).then(d => appendLog(d.error ? "SUMO: " + d.error : `SUMO-GUI opened for ${d.folder}`, "sys"));
-      body.appendChild(b);
+      b.classList.add("dl-bar");
+      document.querySelector("#modal .modal-box").appendChild(b);
+    }
+
+    // Comparison: the redesign at a glance (signal plans and simulated effects)
+    if (data.type === "comparison" && data.table && data.table.length) {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "flex:1; overflow:auto; padding:16px;";
+      const get = (cs, m) => data.table.find(r => r.case === cs && r.metric === m);
+      const isTest = (data.slot || "").toLowerCase().includes("test");
+      let html = "";
+      if (isTest) html += `<div style="padding:8px 10px; border:1px solid var(--warn); color:var(--warn); border-radius:6px; margin-bottom:12px;">TEST run: made-up flow-test inputs. These numbers do not describe Pattom.</div>`;
+      // Signal plans
+      if (data.plans) {
+        const ex = data.plans.existing.plan, se = data.plans.selected.plan;
+        const groups = [...new Set([...Object.keys(ex.groups), ...Object.keys(se.groups)])];
+        const W = 620, colors = ["#10b981", "#3b82f6", "#a855f7", "#f97316"];
+        const bar = (plan, label) => {
+          let x = 0, segs = "";
+          const sc = W / Math.max(ex.cycle_s, se.cycle_s);
+          groups.forEach((g, i) => {
+            const gr = plan.groups[g]; if (!gr) return;
+            const gw = gr.green_s * sc, aw = gr.amber_s * sc;
+            segs += `<rect x="${x}" y="0" width="${gw}" height="26" fill="${colors[i % 4]}"/><text x="${x + 6}" y="17" font-size="12" fill="#fff">${g} green ${(+gr.green_s).toFixed(0)} s</text>`;
+            x += gw; segs += `<rect x="${x}" y="0" width="${aw}" height="26" fill="#f59e0b"/>`; x += aw;
+          });
+          const rest = plan.cycle_s * sc - x;
+          if (rest > 0.5) segs += `<rect x="${x}" y="0" width="${rest}" height="26" fill="#ef4444"/>`;
+          return `<div style="margin:4px 0 10px;"><div style="font-size:12px; margin-bottom:3px;"><b>${label}</b> · cycle ${(+plan.cycle_s).toFixed(0)} s</div><svg width="${W}" height="26">${segs}</svg></div>`;
+        };
+        html += `<h3 style="margin:0 0 6px; font-size:14px;">Signal plan: existing vs ${data.plans.selected.id} <span style="color:var(--text-muted); font-weight:normal;">(${data.plans.selected.description || ""})</span></h3>`;
+        html += bar(ex, "Existing (from the signal log)") + bar(se, `Selected by MCE: ${data.plans.selected.id}`);
+        html += `<div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">` + groups.map(g => {
+          const a = ex.groups[g]?.green_s, b = se.groups[g]?.green_s; if (a == null || b == null) return "";
+          const d = b - a; return `${g} green ${(+a).toFixed(0)} → ${(+b).toFixed(0)} s (${d >= 0 ? "+" : ""}${d.toFixed(0)})`;
+        }).filter(Boolean).join(" · ") + ` · cycle ${(+ex.cycle_s).toFixed(0)} → ${(+se.cycle_s).toFixed(0)} s</div>`;
+      }
+      // Effects
+      const metrics = [["idle_co2_kg", "Idle CO₂ (estimated)", "kg", false], ["mean_waiting_s", "Waiting per vehicle", "s", false],
+        ["mean_time_loss_s", "Time lost per vehicle", "s", false], ["mean_travel_time_s", "Travel time", "s", false],
+        ["max_queue_m", "Longest queue", "m", false], ["mean_queue_m", "Average queue", "m", false],
+        ["mean_stops", "Stops per vehicle", "", false], ["throughput", "Vehicles through", "veh", true]];
+      html += `<h3 style="margin:0 0 6px; font-size:14px;">Simulated effect (SUMO, mean of seeds; relative comparison only)</h3><div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:10px;">`;
+      metrics.forEach(([m, label, unit, higherBetter]) => {
+        const e = get("existing", m), s2 = get("selected", m);
+        if (!e || !s2 || e.mean === "" || s2.mean === "") return;
+        const ev = +e.mean, sv = +s2.mean, mx = Math.max(ev, sv) || 1, pct = ev ? (sv - ev) / ev * 100 : 0;
+        const better = higherBetter ? sv > ev : sv < ev, same = Math.abs(pct) < 0.5;
+        const col = same ? "var(--text-muted)" : better ? "var(--ok)" : "var(--bad)";
+        const row = (name, v, sd, c) => `<div style="display:flex; align-items:center; gap:6px; font-size:11px; margin:2px 0;"><span style="width:58px;">${name}</span><div style="flex:1; background:rgba(255,255,255,0.05); border-radius:3px;"><div style="width:${v / mx * 100}%; background:${c}; height:12px; border-radius:3px;"></div></div><span style="width:86px; text-align:right;">${v.toFixed(2)}${sd !== "" ? " ±" + (+sd).toFixed(2) : ""} ${unit}</span></div>`;
+        html += `<div style="border:1px solid var(--panel-border); border-radius:6px; padding:8px 10px;"><div style="display:flex; justify-content:space-between; font-size:12px;"><b>${label}</b><b style="color:${col};">${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%</b></div>` +
+          row("existing", ev, e.sd, "#64748b") + row(data.plans ? data.plans.selected.id : "selected", sv, s2.sd, same ? "#64748b" : better ? "#10b981" : "#ef4444") +
+          (m === "idle_co2_kg" ? `<div style="font-size:10px; color:var(--text-muted); margin-top:3px;">registered idle factors × SUMO waiting time (source not checked)</div>` : "") + `</div>`;
+      });
+      html += `</div>`;
+      const obs = data.table.filter(r => r.case === "observed" || r.case === "calibration");
+      if (obs.length) html += `<div style="font-size:12px; color:var(--text-muted); margin-top:12px;">From the video (kept apart from SUMO): ` + obs.map(r => `${r.metric} ${r.mean} ${r.unit}`).join(" · ") + `</div>`;
+      wrap.innerHTML = html;
+      body.appendChild(wrap);
+      return;
     }
 
     // Review: a gallery of flagged tracks, each with a cropped picture and its box

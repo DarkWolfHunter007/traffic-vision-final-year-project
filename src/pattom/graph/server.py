@@ -473,6 +473,16 @@ def generate_node_preview(node_id: str, spec: dict[str, Any] | None = None) -> d
             res["notes"] = _run_notes(Path(path).parent / meta)
             if not res["table"]:
                 res["notes"].append("No rows.")
+            if node_type == "comparison":
+                folder = Path(path).parent
+                try:
+                    inp = json.loads((folder / "sumo_inputs.json").read_text(encoding="utf-8"))
+                    alts = json.loads((folder.parent / "decision" / "alternatives.json").read_text(encoding="utf-8"))
+                    sel = next(a for a in alts["alternatives"] if a["id"] == inp["selected"])
+                    res["plans"] = {"existing": alts["existing"], "selected": sel}
+                    res["slot"] = inp.get("slot")
+                except Exception as e:  # noqa: BLE001
+                    res["notes"].append(f"signal plans not found: {e}")
         return res
 
     if node_type == "review":
