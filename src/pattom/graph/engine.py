@@ -221,6 +221,65 @@ def write_cache(node_id: str, cache_key: str, outputs: dict[str, str]) -> None:
         pass
 
 
+STATUS_MARK = {"completed": "✓", "cached": "✓", "failed": "✗", "locked": "🔒", "skipped": "–", "cancelled": "■"}
+
+
+def _describe_file(value: Any) -> str:
+    """One line about a stage input or output: name, size, and rows for a table."""
+    p = _resolve_file_path(value)
+    if not p or not p.is_file():
+        return f"{value} (not a file)"
+    size = p.stat().st_size
+    extra = ""
+    if p.suffix.lower() == ".csv":
+        with open(p, encoding="utf-8", errors="replace") as f:
+            rows = max(sum(1 for _ in f) - 1, 0)
+        extra = f", {rows} row(s)"
+    elif p.suffix.lower() == ".json":
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                extra = ", keys: " + ", ".join(list(data)[:8])
+        except Exception:
+            pass
+    try:
+        shown = p.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        shown = str(p)
+    return f"{shown} ({size / 1024:.1f} KB{extra})"
+
+
+def _short(value: Any) -> str:
+    p = _resolve_file_path(value)
+    if p and p.is_file():
+        try:
+            return p.relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            return str(p)
+    text = json.dumps(value) if not isinstance(value, str) else value
+    return text if len(text) <= 80 else text[:77] + "..."
+
+
+def _step_notes(outputs: dict[str, Any], since: float) -> list[str]:
+    """Notes the stage wrote into the .run.json files it created in this step."""
+    notes: list[str] = []
+    folders = {p.parent for p in (_resolve_file_path(v) for v in outputs.values()) if p and p.is_file()}
+    for folder in folders:
+        for meta in sorted(folder.glob("*.run.json")):
+            if meta.stat().st_mtime + 1 < since:
+                continue
+            try:
+                data = json.loads(meta.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            raw = [data.get("notes")] + list(((data.get("parameters") or {}).get("notes") or []) if isinstance(
+                (data.get("parameters") or {}).get("notes"), list) else [(data.get("parameters") or {}).get("notes")])
+            for n in raw:
+                if n:
+                    notes.append(f"{meta.name}: {n}")
+    return notes
+
+
 def run_graph(
     spec: dict[str, Any],
     target_node_id: str | None = None,
@@ -253,6 +312,9 @@ def run_graph(
             log_callback(node_id, line)
 
     def _emit_status(node_id: str, st: str, elapsed: float | None = None, err: str | None = None) -> None:
+        if st in STATUS_MARK:
+            tail = f" in {elapsed:.2f}s" if elapsed else ""
+            _emit_log(node_id, f"  {STATUS_MARK[st]} {st.upper()}{tail}" + (f": {err}" if err else ""))
         result.status[node_id] = st
         if err:
             result.errors[node_id] = err
@@ -261,7 +323,10 @@ def run_graph(
         if status_callback:
             status_callback(node_id, st, elapsed, err)
 
-    for node_id in order:
+    _emit_log("sys", f"Run plan: {len(order)} step(s) in this order: {' -> '.join(order)}")
+    run_start = time.time()
+    for step_no, node_id in enumerate(order, start=1):
+        _emit_log(node_id, f"── Step {step_no}/{len(order)}: {NODE_TYPES[spec['nodes'][node_id]['type']].label} [{node_id}]")
         if stop_event and stop_event.is_set():
             _emit_status(node_id, "cancelled", 0.0, "Execution cancelled by user")
             continue
@@ -293,12 +358,18 @@ def run_graph(
             _emit_status(node_id, "failed", 0.0, err_msg)
             continue
 
+        for port_name, val in inputs.items():
+            _emit_log(node_id, f"  • input {port_name}: {_describe_file(val)}")
+        for k, v in params.items():
+            if not k.startswith("_") and v not in (None, ""):
+                _emit_log(node_id, f"  • setting {k} = {_short(v)}")
+
         # Check approval gate
         if node_type.gate_checker:
             gate_info = node_type.gate_checker(params)
+            _emit_log(node_id, f"  • gate {gate_info.get('decision')}: {gate_info.get('reason')}")
             if gate_info.get("locked"):
                 err_msg = f"Approval gate {gate_info['decision']} locked: {gate_info['reason']}"
-                _emit_log(node_id, f"[{node_id}] Refused: {err_msg}")
                 _emit_status(node_id, "locked", 0.0, err_msg)
                 continue
             elif not gate_info.get("approved") and gate_info.get("allow_draft"):
@@ -310,13 +381,15 @@ def run_graph(
             cached_outputs = check_cache(node_id, cache_key)
             if cached_outputs:
                 result.outputs[node_id] = cached_outputs
-                _emit_log(node_id, f"[{node_id}] Cache hit: reusing outputs from previous run")
+                _emit_log(node_id, "  • inputs, settings and code unchanged: reusing the previous outputs")
+                for port_name, val in cached_outputs.items():
+                    _emit_log(node_id, f"  • output {port_name}: {_describe_file(val)}")
                 _emit_status(node_id, "cached", 0.0)
                 continue
 
         # Execute node
+        _emit_log(node_id, "  • no reusable result" + (" (forced re-run)" if force else "") + ": running the stage")
         _emit_status(node_id, "running")
-        _emit_log(node_id, f"[{node_id}] Starting stage {node_type.label}...")
         start_time = time.time()
 
         if use_subprocess:
@@ -382,17 +455,18 @@ def run_graph(
                     elapsed = time.time() - start_time
                     result.outputs[node_id] = outputs
                     write_cache(node_id, cache_key, outputs)
-                    _emit_log(node_id, f"[{node_id}] Completed in {elapsed:.2f}s")
+                    for port_name, val in outputs.items():
+                        _emit_log(node_id, f"  • output {port_name}: {_describe_file(val)}")
+                    for note in _step_notes(outputs, start_time):
+                        _emit_log(node_id, f"  • note: {note}")
                     _emit_status(node_id, "completed", elapsed)
                 else:
                     elapsed = time.time() - start_time
                     err_msg = last_line[0] or f"Process exited with code {proc.returncode}"
-                    _emit_log(node_id, f"[{node_id}] Failed: {err_msg}")
                     _emit_status(node_id, "failed", elapsed, err_msg)
             except Exception as error:
                 elapsed = time.time() - start_time
                 err_msg = f"{type(error).__name__}: {error}"
-                _emit_log(node_id, f"[{node_id}] Error: {err_msg}")
                 _emit_status(node_id, "failed", elapsed, err_msg)
             finally:
                 active_proc[0] = None
@@ -408,12 +482,19 @@ def run_graph(
                 elapsed = time.time() - start_time
                 result.outputs[node_id] = outputs
                 write_cache(node_id, cache_key, outputs)
-                _emit_log(node_id, f"[{node_id}] Completed in {elapsed:.2f}s")
+                for port_name, val in outputs.items():
+                    _emit_log(node_id, f"  • output {port_name}: {_describe_file(val)}")
+                for note in _step_notes(outputs, start_time):
+                    _emit_log(node_id, f"  • note: {note}")
                 _emit_status(node_id, "completed", elapsed)
             except Exception as error:
                 elapsed = time.time() - start_time
                 err_msg = f"{type(error).__name__}: {error}"
-                _emit_log(node_id, f"[{node_id}] Error: {err_msg}")
                 _emit_status(node_id, "failed", elapsed, err_msg)
 
+    _emit_log("sys", f"Checklist after {time.time() - run_start:.1f}s:")
+    for node_id in order:
+        st = result.status.get(node_id, "not run")
+        why = f" ({result.errors[node_id]})" if node_id in result.errors and st != "completed" else ""
+        _emit_log("sys", f"  {STATUS_MARK.get(st, '?')} {node_id}: {st}{why}")
     return result
