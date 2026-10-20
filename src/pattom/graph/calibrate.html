@@ -346,10 +346,28 @@ function renderAll() {
     at.appendChild(tr);
   }
   const wt = $("#wTable");
-  wt.innerHTML = "<tr><th>approach</th><th>width m (type)</th></tr>";
+  wt.innerHTML = "<tr><th>approach</th><th>width m (type)</th><th>head</th><th>active</th><th></th></tr>";
   for (const [k, v] of Object.entries(widths)) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${k}</td><td>${v.width_m ?? "not set"} ${v.width_m != null ? "(" + (v.value_type || "unlabelled") + ")" : ""}</td>`;
+    const activeText = v.enabled !== false ? "✓ on" : "off";
+    tr.innerHTML = `<td>${k}</td><td>${v.width_m ?? "not set"} ${v.width_m != null ? "(" + (v.value_type || "unlabelled") + ")" : ""}</td><td>${v.signal_head || "–"}</td><td><button class="small">${activeText}</button></td><td><button class="small danger">x</button></td>`;
+    const [tBtn, dBtn] = tr.querySelectorAll("button");
+    tBtn.onclick = async () => {
+      try {
+        const r = await api("/calib/width", { approach: k, toggle: true });
+        widths[k].enabled = r.enabled;
+        renderAll();
+        say(`${k} is now ${r.enabled ? "enabled" : "disabled"}.`);
+      } catch (e) { say(e.message, "bad"); }
+    };
+    dBtn.onclick = async () => {
+      try {
+        await api("/calib/width", { approach: k, remove: true });
+        delete widths[k];
+        renderAll();
+        say(`Removed ${k} width.`);
+      } catch (e) { say(e.message, "bad"); }
+    };
     wt.appendChild(tr);
   }
   draw();
@@ -438,7 +456,7 @@ $("#wUse").onclick = async () => {
   if (derivedWidth == null) { say("Measure a width first.", "bad"); return; }
   try {
     const r = await api("/calib/width", { approach: derivedWidth.approach, width_m: derivedWidth.width_m, value_type: "derived", check_error_m: derivedWidth.err, signal_head: $("#wHead").value });
-    widths[r.approach] = { width_m: r.width_m, value_type: r.value_type }; clearDerived(); renderAll();
+    widths[r.approach] = { width_m: r.width_m, value_type: r.value_type, signal_head: $("#wHead").value.trim() || null, enabled: r.enabled !== false }; clearDerived(); renderAll();
     say(`Saved ${r.approach} width ${r.width_m} m (derived).` + (r.warning ? " " + r.warning : ""), r.warning ? "warn" : "ok");
   }
   catch (e) { say(e.message, "bad"); }
@@ -447,7 +465,7 @@ $("#wTapeUse").onclick = async () => {
   const w = parseFloat($("#wTape").value); if (!(w > 0)) { say("Type the tape width.", "bad"); return; }
   try {
     const r = await api("/calib/width", { approach: $("#wApp").value, width_m: w, value_type: "measured", signal_head: $("#wHead").value });
-    widths[r.approach] = { width_m: r.width_m, value_type: r.value_type }; renderAll();
+    widths[r.approach] = { width_m: r.width_m, value_type: r.value_type, signal_head: $("#wHead").value.trim() || null, enabled: r.enabled !== false }; renderAll();
     say(`Saved ${r.approach} width ${r.width_m} m (measured).` + (r.warning ? " " + r.warning : ""), r.warning ? "warn" : "ok");
   }
   catch (e) { say(e.message, "bad"); }

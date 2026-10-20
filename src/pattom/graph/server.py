@@ -739,7 +739,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, calib.save_zones(payload))
 
             elif route == "/calib/width":
-                self._json(200, calib.save_width(str(payload.get("approach", "")), float(payload.get("width_m")), str(payload.get("value_type", "")), payload.get("check_error_m"), payload.get("signal_head")))
+                if payload.get("remove"):
+                    self._json(200, calib.remove_width(str(payload.get("approach", ""))))
+                elif payload.get("toggle"):
+                    self._json(200, calib.toggle_width(str(payload.get("approach", ""))))
+                else:
+                    self._json(200, calib.save_width(str(payload.get("approach", "")), float(payload.get("width_m")), str(payload.get("value_type", "")), payload.get("check_error_m"), payload.get("signal_head"), payload.get("enabled", True)))
 
             elif route == "/stop":
                 EXEC_MGR.stop_run()

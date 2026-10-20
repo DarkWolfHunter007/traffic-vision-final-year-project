@@ -50,9 +50,25 @@ def load_config(path: Path) -> dict:
             raise ValueError(f"{path}: missing {k}")
     if cfg["pcu_table"] not in ("table_3_1", "table_III_1"):
         raise ValueError("pcu_table must be table_3_1 or table_III_1 (O3 is open; choose one)")
-    for name, a in cfg["approaches"].items():
-        if a.get("width_m") is None or a.get("signal_head") is None:
-            raise ValueError(f"approach {name}: width_m (measured on site) and signal_head are required")
+    active_approaches = {}
+    for name, a in (cfg.get("approaches") or {}).items():
+        if not isinstance(a, dict):
+            continue
+        if a.get("enabled") is False:
+            continue
+        if a.get("enabled") is True:
+            if a.get("width_m") is None or a.get("signal_head") is None:
+                raise ValueError(f"approach {name}: width_m (measured on site) and signal_head are required when enabled")
+            active_approaches[name] = a
+        else:
+            # When enabled is not explicitly set, include if complete
+            if a.get("width_m") is not None and a.get("signal_head") is not None:
+                active_approaches[name] = a
+
+    if not active_approaches:
+        raise ValueError("No approach has complete data (both width_m and signal_head). Enable or configure at least one approach.")
+
+    cfg["approaches"] = active_approaches
     if cfg["effective_green"] not in GREEN_METHODS:
         raise ValueError(f"effective_green must be one of {GREEN_METHODS}")
     if cfg["volume_line_type"] not in ("arrival", "stop_line"):

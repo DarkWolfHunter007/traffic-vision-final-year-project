@@ -294,7 +294,7 @@ def save_zones(payload: dict) -> dict:
 
 
 def save_width(approach: str, width_m: float, value_type: str, check_error_m: float | None = None,
-               signal_head: Any = None) -> dict:
+               signal_head: Any = None, enabled: bool | None = None) -> dict:
     """Road width at the stop line. value_type says where it came from: measured
     (tape on site) or derived (read through the ground mapping, with its error)."""
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", approach or ""):
@@ -309,6 +309,10 @@ def save_width(approach: str, width_m: float, value_type: str, check_error_m: fl
     entry = dict(apps.get(approach) or {})
     entry["width_m"] = round(float(width_m), 2)
     entry["width_value_type"] = value_type
+    if enabled is False:
+        entry["enabled"] = False
+    elif enabled is True and "enabled" in entry:
+        entry["enabled"] = True
     if value_type == "derived":
         entry["width_check_error_m"] = check_error_m
         entry["width_ground_sha256"] = _ground_sha()
@@ -322,7 +326,28 @@ def save_width(approach: str, width_m: float, value_type: str, check_error_m: fl
     apps[approach] = entry
     _write_yaml(INDICATORS_FILE, data, _header(INDICATORS_FILE, "# Indicators config (O3).\n"))
     warn = None if entry["signal_head"] else f"{approach} has no signal head yet; capacity needs it."
-    return {"saved": True, "approach": approach, "width_m": entry["width_m"], "value_type": value_type, "warning": warn}
+    return {"saved": True, "approach": approach, "width_m": entry["width_m"], "value_type": value_type, "enabled": entry.get("enabled", True), "warning": warn}
+
+
+def toggle_width(approach: str) -> dict:
+    data = _read_yaml(INDICATORS_FILE)
+    apps = data.get("approaches") or {}
+    if approach not in apps:
+        raise CalibrationError(f"approach {approach} has no saved width")
+    entry = dict(apps[approach])
+    entry["enabled"] = not entry.get("enabled", True)
+    apps[approach] = entry
+    _write_yaml(INDICATORS_FILE, data, _header(INDICATORS_FILE, "# Indicators config (O3).\n"))
+    return {"saved": True, "approach": approach, "enabled": entry["enabled"]}
+
+
+def remove_width(approach: str) -> dict:
+    data = _read_yaml(INDICATORS_FILE)
+    apps = data.get("approaches") or {}
+    apps.pop(approach, None)
+    data["approaches"] = apps
+    _write_yaml(INDICATORS_FILE, data, _header(INDICATORS_FILE, "# Indicators config (O3).\n"))
+    return {"saved": True, "approach": approach, "removed": True}
 
 
 def state() -> dict:
@@ -343,6 +368,7 @@ def state() -> dict:
     ind = _read_yaml(INDICATORS_FILE)
     return {"videos": videos, "ground": ground, "lines": lines, "zones": zones,
             "widths": {k: {"width_m": (v or {}).get("width_m"), "value_type": (v or {}).get("width_value_type"),
-                           "signal_head": (v or {}).get("signal_head")}
+                           "signal_head": (v or {}).get("signal_head"),
+                           "enabled": (v or {}).get("enabled", True)}
                        for k, v in (ind.get("approaches") or {}).items()},
             "ground_mappings": sorted((ground.get("mappings") or {}).keys())}

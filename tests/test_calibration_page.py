@@ -159,3 +159,20 @@ def test_derived_width_keeps_its_label(files):
     assert r["warning"]
     entry = yaml.safe_load((files / "configs/indicators.yaml").read_text(encoding="utf-8"))["approaches"]["east"]
     assert entry["width_value_type"] == "derived" and entry["width_check_error_m"] == 0.1
+
+
+def test_width_toggle_and_remove(files):
+    (files / "configs/indicators.yaml").write_text("pcu_table: table_3_1\napproaches:\n  north: {width_m: 7.0, signal_head: N}\n", encoding="utf-8")
+    r = calib.toggle_width("north")
+    assert r["enabled"] is False
+    data = yaml.safe_load((files / "configs/indicators.yaml").read_text(encoding="utf-8"))
+    assert data["approaches"]["north"]["enabled"] is False
+
+    r2 = calib.toggle_width("north")
+    assert r2["enabled"] is True
+
+    r3 = calib.remove_width("north")
+    assert r3["removed"] is True
+    data2 = yaml.safe_load((files / "configs/indicators.yaml").read_text(encoding="utf-8"))
+    assert "north" not in data2["approaches"]
+
