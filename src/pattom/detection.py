@@ -141,9 +141,34 @@ def map_labels(dets: list[dict[str, Any]], cfg: DetectionConfig, ignored: Counte
     return out
 
 
+CLASS_COLOURS = {"car": (246, 130, 59), "two_wheeler": (129, 185, 16), "bus": (68, 68, 239),
+                 "auto_rickshaw": (11, 158, 245), "truck": (246, 92, 139)}
+
+
+def _write_live(path: Path, image, dets: list[dict], frame: int, total: int, fps: float) -> None:
+    """A downscaled copy of the current frame with its boxes, for the editor's live view.
+    Display only; never an input to any stage."""
+    scale = 1280 / image.shape[1] if image.shape[1] > 1280 else 1.0
+    view = cv2.resize(image, None, fx=scale, fy=scale) if scale != 1.0 else image.copy()
+    for d in dets:
+        x1, y1, x2, y2 = (int(float(v) * scale) for v in d["xyxy"])
+        col = CLASS_COLOURS.get(d["class"], (212, 182, 6))
+        cv2.rectangle(view, (x1, y1), (x2, y2), col, 2)
+        cv2.putText(view, f"{d['class']} {d['confidence']:.2f}", (x1, max(12, y1 - 4)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, col, 1, cv2.LINE_AA)
+    cv2.putText(view, f"frame {frame}/{total}  t={frame / fps:.1f}s  boxes={len(dets)}", (10, 24),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+    tmp = path.with_suffix(".tmp.jpg")
+    cv2.imwrite(str(tmp), view, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    tmp.replace(path)
+
+
 def run_detection(video: Path, slot: str, cfg: DetectionConfig, detector: Detector | None = None,
-                  out_dir: Path | None = None) -> Path:
-    """Detect on a prepared (CFR) video. Writes detections.csv and run metadata."""
+                  out_dir: Path | None = None, live: bool = False) -> Path:
+    """Detect on a prepared (CFR) video. Writes detections.csv and run metadata.
+    With live=True it also refreshes live_preview.jpg (boxes drawn) and prints
+    progress lines, so the editor can show what is happening."""
+    import time
     from pattom.prepare import probe
 
     info = probe(video)
@@ -157,6 +182,9 @@ def run_detection(video: Path, slot: str, cfg: DetectionConfig, detector: Detect
     out = out_dir / "detections.csv"
     ignored: Counter = Counter()
     cap = cv2.VideoCapture(str(video))
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+    live_path = out_dir / "live_preview.jpg"
+    last_live = 0.0
     frame = n_processed = n_dets = 0
     try:
         with open(out, "w", newline="", encoding="utf-8") as f:
@@ -167,7 +195,13 @@ def run_detection(video: Path, slot: str, cfg: DetectionConfig, detector: Detect
                 if not ok:
                     break
                 if frame % stride == 0:
-                    for d in map_labels(detect_frame(image, cfg, detector), cfg, ignored):
+                    dets = map_labels(detect_frame(image, cfg, detector), cfg, ignored)
+                    if live and time.time() - last_live > 0.7:
+                        last_live = time.time()
+                        _write_live(live_path, image, dets, frame, total, fps)
+                        pct = f" ({100 * frame / total:.0f}%)" if total else ""
+                        print(f"detect: frame {frame}/{total}{pct}, {len(dets)} box(es), {n_dets} so far", flush=True)
+                    for d in dets:
                         x1, y1, x2, y2 = (round(float(v), 2) for v in d["xyxy"])
                         w.writerow([frame, round(frame / fps, 4), d["class"], d["raw_label"],
                                     round(d["confidence"], 4), x1, y1, x2, y2, d["pass"]])

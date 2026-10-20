@@ -334,7 +334,8 @@ def _undistort(inputs, p):
 def _detect(inputs, p):
     from pattom.detection import DetectionConfig, run_detection
 
-    return {"detections": str(run_detection(_path(inputs["video"]), str(p["slot"]), DetectionConfig.load(_path(p["config"]))))}
+    return {"detections": str(run_detection(_path(inputs["video"]), str(p["slot"]), DetectionConfig.load(_path(p["config"])),
+                                            live=True))}
 
 
 def _track(inputs, p):

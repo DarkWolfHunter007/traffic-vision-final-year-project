@@ -633,6 +633,23 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(jpg)
 
+        elif route == "/live":
+            # Newest live_preview.jpg written by a running detection (display only)
+            files = sorted((REPO_ROOT / "runs").glob("*/*/live_preview.jpg"), key=lambda p: p.stat().st_mtime)
+            if not files:
+                self._json(404, {"error": "no live view yet"})
+                return
+            newest = files[-1]
+            self.send_response(200)
+            body = newest.read_bytes()
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Age-S", f"{time.time() - newest.stat().st_mtime:.1f}")
+            self.send_header("Access-Control-Expose-Headers", "X-Age-S")
+            self.end_headers()
+            self.wfile.write(body)
+
         elif route == "/nodes":
             self._json(200, [t.describe() for t in NODE_TYPES.values()])
 

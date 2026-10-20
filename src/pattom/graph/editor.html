@@ -654,6 +654,13 @@
 </div>
 
 <!-- Bottom Drawer -->
+<div id="livePanel" style="display:none; position:fixed; right:16px; bottom:230px; width:520px; z-index:40; background:var(--panel-bg, #111827); border:1px solid var(--panel-border); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.4);">
+  <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; font-size:12px; border-bottom:1px solid var(--panel-border);">
+    <span><b>Live view</b> <span id="liveInfo" style="color:var(--text-muted);"></span></span>
+    <button id="liveClose" class="node-btn" title="Hide until the next run">Hide</button>
+  </div>
+  <img id="liveImg" alt="" style="display:block; width:100%; min-height:120px; background:#000;">
+</div>
 <div id="drawer">
   <div class="drawer-tabs">
     <div class="drawer-tab active" data-tab="logs">Execution Logs</div>
@@ -1828,6 +1835,27 @@ function initEventSource() {
     setTimeout(initEventSource, 3000);
   };
 }
+
+// Live view: while detection runs, show the frame it is working on, with its boxes
+let liveHidden = false, liveTimer = null;
+document.getElementById("liveClose").onclick = () => { liveHidden = true; document.getElementById("livePanel").style.display = "none"; };
+function liveTick() {
+  const running = Object.entries(executionState.status || {}).some(([id, st]) => st === "running" && graph.nodes[id] && graph.nodes[id].type === "detect");
+  const panel = document.getElementById("livePanel");
+  if (!running) { if (executionState.state !== "running") liveHidden = false; panel.style.display = "none"; return; }
+  if (liveHidden) return;
+  fetch("/live?t=" + Date.now()).then(r => {
+    if (!r.ok) throw new Error("none");
+    const age = r.headers.get("X-Age-S");
+    return r.blob().then(b => ({ b, age }));
+  }).then(({ b, age }) => {
+    const img = document.getElementById("liveImg");
+    const old = img.src; img.src = URL.createObjectURL(b); if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+    document.getElementById("liveInfo").textContent = age > 5 ? "(waiting for the next frame...)" : "detection running";
+    panel.style.display = "block";
+  }).catch(() => {});
+}
+liveTimer = setInterval(liveTick, 800);
 
 // Initial Initialization
 (async () => {
