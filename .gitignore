@@ -31,3 +31,4 @@ outputs/
 *.yaml.bak
 configs/decision.yaml
 configs/sumo.yaml
+configs/flowtest/

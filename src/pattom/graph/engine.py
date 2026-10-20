@@ -347,11 +347,14 @@ def run_graph(
                 )
                 active_proc[0] = proc
 
-                # Stream stdout in background
+                # Stream stdout in background; keep the last line, which names the error on failure
+                last_line = [""]
+
                 def _stream_lines(pipe):
                     for line in iter(pipe.readline, ""):
                         line_clean = line.rstrip()
                         if line_clean:
+                            last_line[0] = line_clean
                             _emit_log(node_id, line_clean)
                     pipe.close()
 
@@ -383,7 +386,7 @@ def run_graph(
                     _emit_status(node_id, "completed", elapsed)
                 else:
                     elapsed = time.time() - start_time
-                    err_msg = f"Process exited with code {proc.returncode}"
+                    err_msg = last_line[0] or f"Process exited with code {proc.returncode}"
                     _emit_log(node_id, f"[{node_id}] Failed: {err_msg}")
                     _emit_status(node_id, "failed", elapsed, err_msg)
             except Exception as error:

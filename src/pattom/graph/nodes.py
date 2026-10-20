@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+import json
+
 import yaml
 
 from pattom.paths import CALIBRATION, REPO_ROOT
@@ -470,7 +472,8 @@ def _mce(inputs, p):
     from pattom.alternatives import mce
 
     out = _decision_dir(inputs["alternatives"])
-    return {"selected": str(mce(_path(inputs["alternatives"]), _path(inputs["scores"]), out.parent.name,
+    slot = json.loads(_path(inputs["alternatives"]).read_text(encoding="utf-8"))["slot"]
+    return {"selected": str(mce(_path(inputs["alternatives"]), _path(inputs["scores"]), slot,
                                 _load(p)["mce"], out))}
 
 
@@ -495,7 +498,8 @@ def _sumo_run(inputs, p):
     from pattom.sumo import run_cases
 
     out = _path(inputs["sumo_inputs"]).parent
-    return {"results": str(run_cases(_path(inputs["sumo_inputs"]), out.parent.name, _load(p)["run"], out))}
+    slot = json.loads(_path(inputs["sumo_inputs"]).read_text(encoding="utf-8"))["slot"]
+    return {"results": str(run_cases(_path(inputs["sumo_inputs"]), slot, _load(p)["run"], out))}
 
 
 def _comparison(inputs, p):
@@ -504,7 +508,8 @@ def _comparison(inputs, p):
     run_dir = _path(inputs["delays"]).parent
     out = _path(inputs["results"]).parent
     return {"comparison": str(compare_cases(_path(inputs["results"]), run_dir / "stopped_delay.csv",
-                                            run_dir / "queue.csv", run_dir.name, _load(p)["comparison"], out))}
+                                            run_dir / "queue.csv", _slot_of(run_dir / "stopped_delay.csv"),
+                                            _load(p)["comparison"], out))}
 
 
 _P = Port
