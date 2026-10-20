@@ -1447,7 +1447,7 @@ function openPreviewModal(nodeId) {
       wrap.style.overflow = "auto";
       wrap.style.padding = "16px";
 
-      const rows = data.indicators || data.congestion || data.emissions || data.stopped_delays || data.queues;
+      const rows = data.indicators || data.congestion || data.emissions || data.table || data.stopped_delays || data.queues;
       if (data.notes && data.notes.length) {
         const n = document.createElement("div");
         n.style.cssText = "color:var(--warn);margin-bottom:10px;";
@@ -1708,7 +1708,14 @@ document.getElementById("presetBtn").onclick = () => {
       delay_queue: { type: "delay_queue", params: { definitions: "configs/definitions.yaml", allow_draft: true }, pos: [1080, 190] },
       indicators: { type: "indicators", params: { config: "configs/indicators.yaml" }, pos: [1340, 40] },
       emissions: { type: "emissions", params: { config: "configs/emissions.yaml" }, pos: [1340, 190] },
-      congestion: { type: "congestion", params: { formula: "configs/congestion.yaml" }, pos: [1600, 40] }
+      congestion: { type: "congestion", params: { formula: "configs/congestion.yaml" }, pos: [1600, 40] },
+      problems: { type: "problems", params: { config: "configs/decision.yaml" }, pos: [1860, 40] },
+      alternatives: { type: "alternatives", params: { config: "configs/decision.yaml", signal_log: "configs/signal_log.csv" }, pos: [2120, 40] },
+      pre_sumo: { type: "pre_sumo", params: { config: "configs/decision.yaml" }, pos: [2380, 40] },
+      mce: { type: "mce", params: { config: "configs/decision.yaml" }, pos: [2640, 40] },
+      sumo_inputs: { type: "sumo_inputs", params: { config: "configs/sumo.yaml", lines: "configs/lines.yaml" }, pos: [2900, 40] },
+      sumo_run: { type: "sumo_run", params: { config: "configs/sumo.yaml" }, pos: [3160, 40] },
+      comparison: { type: "comparison", params: { config: "configs/sumo.yaml" }, pos: [3420, 40] }
     },
     edges: [
       { from: "cfr.video", to: "detect.video" },
@@ -1719,7 +1726,19 @@ document.getElementById("presetBtn").onclick = () => {
       { from: "count.counts", to: "indicators.counts" },
       { from: "delay_queue.delays", to: "indicators.delays" },
       { from: "delay_queue.delays", to: "emissions.delays" },
-      { from: "indicators.indicators", to: "congestion.indicators" }
+      { from: "indicators.indicators", to: "congestion.indicators" },
+      { from: "congestion.index", to: "problems.index" },
+      { from: "emissions.emissions", to: "problems.emissions" },
+      { from: "problems.problems", to: "alternatives.problems" },
+      { from: "alternatives.alternatives", to: "pre_sumo.alternatives" },
+      { from: "indicators.indicators", to: "pre_sumo.indicators" },
+      { from: "alternatives.alternatives", to: "mce.alternatives" },
+      { from: "pre_sumo.scores", to: "mce.scores" },
+      { from: "count.counts", to: "sumo_inputs.counts" },
+      { from: "mce.selected", to: "sumo_inputs.selected" },
+      { from: "sumo_inputs.sumo_inputs", to: "sumo_run.sumo_inputs" },
+      { from: "sumo_run.results", to: "comparison.results" },
+      { from: "delay_queue.delays", to: "comparison.delays" }
     ]
   };
   render();

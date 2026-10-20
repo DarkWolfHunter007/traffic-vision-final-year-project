@@ -388,6 +388,125 @@ def _congestion(inputs, p):
     return {"index": str(run_congestion(_path(inputs["indicators"]), _path(p["formula"])))}
 
 
+
+# --- H to M: problems, alternatives, scoring, MCE, SUMO, comparison ----------------
+
+DECISION_SECTIONS = {"rules": "problem rules", "head_groups": "signal head -> phase group",
+                     "alternatives": "signal-timing alternatives", "pre_sumo": "pre-SUMO scoring method (O13)",
+                     "mce": "MCE weights and scoring (O13)"}
+SUMO_SECTIONS = {"centre_xy": "junction centre", "approaches": "approach ends, lanes and speeds",
+                 "vtypes": "vehicle types", "inputs": "phase groups and demand choices",
+                 "run": "seeds and warm-up", "comparison": "emission method (O18)"}
+
+
+def _section_gate(decision: str, title: str, sections: dict[str, str]):
+    def check(params: dict[str, Any]) -> dict[str, Any]:
+        cfg_file = _path(params.get("config"))
+        rel = str(cfg_file.relative_to(REPO_ROOT)) if cfg_file.is_relative_to(REPO_ROOT) else str(cfg_file)
+        base = {"decision": decision, "title": title, "config": rel, "version": None}
+        if not cfg_file.is_file():
+            return {**base, "locked": True, "approved": False,
+                    "reason": f"{rel} is missing. Copy it from the .example.yaml file and fill it in."}
+        try:
+            data = yaml.safe_load(cfg_file.read_text(encoding="utf-8")) or {}
+        except Exception as e:  # noqa: BLE001
+            return {**base, "locked": True, "approved": False, "reason": f"Config read error: {e}"}
+        need = params.get("_sections") or list(sections)
+        empty = [sections[k] for k in need if data.get(k) in (None, "", [], {})]
+        if empty:
+            return {**base, "locked": True, "approved": False, "reason": "Not filled in yet: " + "; ".join(empty)}
+        tag = " (TEST values)" if data.get("test_values") else ""
+        return {**base, "locked": False, "approved": True, "reason": f"Filled in{tag}", "version": data.get("version")}
+    return check
+
+
+def _load(p) -> dict:
+    return yaml.safe_load(_path(p["config"]).read_text(encoding="utf-8")) or {}
+
+
+def _slot_of(csv_path: Path) -> str:
+    import csv as _csv
+
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        row = next(_csv.DictReader(f), None)
+    return (row or {}).get("slot") or csv_path.parent.parent.name
+
+
+def _decision_dir(any_output: str | Path) -> Path:
+    d = _path(any_output).parent
+    if d.name != "decision":
+        d = d / "decision"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _problems(inputs, p):
+    from pattom.analysis import find_problems
+
+    emissions = inputs.get("emissions")
+    return {"problems": str(find_problems(_path(inputs["index"]), _path(emissions) if emissions else None,
+                                          _path(p["config"])))}
+
+
+def _alternatives(inputs, p):
+    from pattom.alternatives import build_alternatives, write_cycles
+
+    cfg = _load(p)
+    out = _decision_dir(inputs["problems"])
+    cycles = write_cycles(_path(p["signal_log"]), cfg["head_groups"], out)
+    slot = _slot_of(_path(inputs["problems"])) if _path(inputs["problems"]).stat().st_size else "test"
+    return {"alternatives": str(build_alternatives(cycles, _path(inputs["problems"]), _path(p["config"]), slot, out))}
+
+
+def _pre_sumo(inputs, p):
+    from pattom.alternatives import pre_sumo_scores
+
+    out = _decision_dir(inputs["alternatives"])
+    return {"scores": str(pre_sumo_scores(_path(inputs["alternatives"]), _path(inputs["indicators"]),
+                                          _slot_of(_path(inputs["indicators"])), _load(p)["pre_sumo"], out))}
+
+
+def _mce(inputs, p):
+    from pattom.alternatives import mce
+
+    out = _decision_dir(inputs["alternatives"])
+    return {"selected": str(mce(_path(inputs["alternatives"]), _path(inputs["scores"]), out.parent.name,
+                                _load(p)["mce"], out))}
+
+
+def _sumo_dir(any_output: str | Path) -> Path:
+    d = _path(any_output).parent
+    d = (d.parent if d.name == "decision" else d) / "sumo"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _sumo_inputs(inputs, p):
+    from pattom.sumo import build_inputs
+
+    cfg = _load(p)
+    alts = _path(inputs["selected"]).parent / "alternatives.json"
+    out = _sumo_dir(inputs["selected"])
+    return {"sumo_inputs": str(build_inputs(_path(inputs["counts"]), alts, _path(inputs["selected"]), _path(p["lines"]),
+                                            _path(p["config"]), _slot_of(_path(inputs["counts"])), cfg["inputs"], out))}
+
+
+def _sumo_run(inputs, p):
+    from pattom.sumo import run_cases
+
+    out = _path(inputs["sumo_inputs"]).parent
+    return {"results": str(run_cases(_path(inputs["sumo_inputs"]), out.parent.name, _load(p)["run"], out))}
+
+
+def _comparison(inputs, p):
+    from pattom.sumo import compare_cases
+
+    run_dir = _path(inputs["delays"]).parent
+    out = _path(inputs["results"]).parent
+    return {"comparison": str(compare_cases(_path(inputs["results"]), run_dir / "stopped_delay.csv",
+                                            run_dir / "queue.csv", run_dir.name, _load(p)["comparison"], out))}
+
+
 _P = Port
 _TYPES = [
     NodeType(
@@ -538,6 +657,85 @@ _TYPES = [
             "formula": {"type": "file", "label": "Congestion Formula YAML (O4)", "filter": [".yaml", ".yml"], "default": _cfg("congestion.yaml"), "required": True},
         },
         gate_checker=check_gate_o4,
+    ),
+    NodeType(
+        name="problems",
+        label="Problems (H)",
+        category="Decision",
+        inputs=(_P("index", "index"), _P("emissions", "emissions")),
+        outputs=(_P("problems", "problems"),),
+        params={"config": _cfg("decision.yaml"), "_sections": ["rules"]},
+        run=_problems,
+        param_schema={"config": {"type": "file", "label": "Decision YAML (rules)", "filter": [".yaml"], "default": _cfg("decision.yaml"), "required": True}},
+        gate_checker=_section_gate("H", "Problem rules", DECISION_SECTIONS),
+    ),
+    NodeType(
+        name="alternatives",
+        label="Signal-timing alternatives (I)",
+        category="Decision",
+        inputs=(_P("problems", "problems"),),
+        outputs=(_P("alternatives", "alternatives"),),
+        params={"config": _cfg("decision.yaml"), "signal_log": _cfg("signal_log.csv"), "_sections": ["head_groups", "alternatives"]},
+        run=_alternatives,
+        param_schema={"config": {"type": "file", "label": "Decision YAML", "filter": [".yaml"], "default": _cfg("decision.yaml"), "required": True},
+                      "signal_log": {"type": "file", "label": "Signal Log CSV (existing plan)", "filter": [".csv"], "default": _cfg("signal_log.csv"), "required": True}},
+        gate_checker=_section_gate("I", "Alternatives", DECISION_SECTIONS),
+    ),
+    NodeType(
+        name="pre_sumo",
+        label="Pre-SUMO scoring (J)",
+        category="Decision",
+        inputs=(_P("alternatives", "alternatives"), _P("indicators", "indicators")),
+        outputs=(_P("scores", "scores"),),
+        params={"config": _cfg("decision.yaml"), "_sections": ["pre_sumo"]},
+        run=_pre_sumo,
+        param_schema={"config": {"type": "file", "label": "Decision YAML", "filter": [".yaml"], "default": _cfg("decision.yaml"), "required": True}},
+        gate_checker=_section_gate("O13", "Pre-SUMO scoring", DECISION_SECTIONS),
+    ),
+    NodeType(
+        name="mce",
+        label="MCE and selection (K)",
+        category="Decision",
+        inputs=(_P("alternatives", "alternatives"), _P("scores", "scores")),
+        outputs=(_P("selected", "selected"),),
+        params={"config": _cfg("decision.yaml"), "_sections": ["mce"]},
+        run=_mce,
+        param_schema={"config": {"type": "file", "label": "Decision YAML", "filter": [".yaml"], "default": _cfg("decision.yaml"), "required": True}},
+        gate_checker=_section_gate("O13", "MCE weights", DECISION_SECTIONS),
+    ),
+    NodeType(
+        name="sumo_inputs",
+        label="SUMO network, demand, plans (L)",
+        category="Simulation",
+        inputs=(_P("counts", "counts"), _P("selected", "selected")),
+        outputs=(_P("sumo_inputs", "sumo_inputs"),),
+        params={"config": _cfg("sumo.yaml"), "lines": _cfg("lines.yaml"), "_sections": ["centre_xy", "approaches", "vtypes", "inputs"]},
+        run=_sumo_inputs,
+        param_schema={"config": {"type": "file", "label": "SUMO YAML", "filter": [".yaml"], "default": _cfg("sumo.yaml"), "required": True},
+                      "lines": {"type": "file", "label": "Counting Lines YAML (movements)", "filter": [".yaml"], "default": _cfg("lines.yaml"), "required": True}},
+        gate_checker=_section_gate("O9", "SUMO network", SUMO_SECTIONS),
+    ),
+    NodeType(
+        name="sumo_run",
+        label="SUMO runs, existing vs selected (L)",
+        category="Simulation",
+        inputs=(_P("sumo_inputs", "sumo_inputs"),),
+        outputs=(_P("results", "results"),),
+        params={"config": _cfg("sumo.yaml"), "_sections": ["run"]},
+        run=_sumo_run,
+        param_schema={"config": {"type": "file", "label": "SUMO YAML", "filter": [".yaml"], "default": _cfg("sumo.yaml"), "required": True}},
+        gate_checker=_section_gate("L", "SUMO runs", SUMO_SECTIONS),
+    ),
+    NodeType(
+        name="comparison",
+        label="Comparison (M)",
+        category="Simulation",
+        inputs=(_P("results", "results"), _P("delays", "delays")),
+        outputs=(_P("comparison", "comparison"),),
+        params={"config": _cfg("sumo.yaml"), "_sections": ["comparison"]},
+        run=_comparison,
+        param_schema={"config": {"type": "file", "label": "SUMO YAML", "filter": [".yaml"], "default": _cfg("sumo.yaml"), "required": True}},
+        gate_checker=_section_gate("O18", "Comparison", SUMO_SECTIONS),
     ),
 ]
 NODE_TYPES: dict[str, NodeType] = {t.name: t for t in _TYPES}

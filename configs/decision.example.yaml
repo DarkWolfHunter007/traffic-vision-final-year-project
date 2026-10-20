@@ -1,0 +1,31 @@
+# Copy to configs/decision.yaml. Steps H to K (problems, alternatives, pre-SUMO
+# scoring, MCE). Every empty value is your decision; nothing has a default.
+# The order is fixed: problems -> alternatives -> scoring -> MCE -> selection (D4).
+
+rules: []                     # H: [{indicator: vc_ratio, op: '>', value: , problem: "north over capacity"}]
+                              #    indicators: vc_ratio, mean_stopped_delay_s, max_queue_length_m, congestion_index, co2_g
+
+head_groups: {}               # I: signal head in signal_log.csv -> phase group, e.g. {N: NS, S: NS, E: EW, W: EW}
+
+alternatives: []              # I: signal-timing alternatives (timing within the existing geometry, D2)
+# - id: A1
+#   description:
+#   control: fixed            # fixed, actuated or adaptive
+#   problem_addressed:        # as written in a rule's "problem"
+#   plan: {cycle_s: , groups: {NS: {green_s: , amber_s: }, EW: {green_s: , amber_s: }}}
+
+pre_sumo: {}                  # J: method O13
+#   approach_groups: {north: NS, east: EW}
+#   effective_green:          # displayed_green or green_plus_amber_minus_lost
+#   congestion_measure:       # max_vc or flow_weighted_vc
+#   volume_stat:              # mean or max
+#   delay_method: none        # no delay formula is registered yet (T28)
+
+mce: {}                       # K: weights and scoring O13
+#   weights: {congestion: , emission: , safety: , cost: , land: }    # add up to 1
+#   directions: {congestion: higher_is_better, emission: higher_is_better, safety: higher_is_better, cost: lower_is_better, land: lower_is_better}
+#   manual_scores: {safety: {A1: , A2: }, cost: {...}, land: {...}}
+#   scale:                    # e.g. "1-5, 5 best"
+#   equal_criterion:          # score_zero, score_one or drop_and_reweight (land is equal for timing changes, D3)
+#   sensitivity_step:
+#   missing_criteria: error   # or drop_and_reweight while a criterion has no scores yet

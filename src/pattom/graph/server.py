@@ -450,6 +450,26 @@ def generate_node_preview(node_id: str, spec: dict[str, Any] | None = None) -> d
             res["notes"] = _run_notes(Path(em_path).parent / "emissions.run.json")
         return res
 
+    table_outputs = {"problems": ("problems", "problems.run.json"), "pre_sumo": ("scores", "pre_sumo_scores.run.json"),
+                     "sumo_run": ("results", "sumo_results.run.json"), "comparison": ("comparison", "comparison.run.json")}
+    if node_type in table_outputs:
+        port, meta = table_outputs[node_type]
+        path = outputs.get(port)
+        if path and Path(path).is_file():
+            with open(path, newline="", encoding="utf-8") as f:
+                res["table"] = list(csv.DictReader(f))
+            res["notes"] = _run_notes(Path(path).parent / meta)
+            if not res["table"]:
+                res["notes"].append("No rows.")
+        return res
+
+    if node_type in ("alternatives", "mce", "sumo_inputs"):
+        port = {"alternatives": "alternatives", "mce": "selected", "sumo_inputs": "sumo_inputs"}[node_type]
+        path = outputs.get(port)
+        if path and Path(path).is_file():
+            res["json"] = json.loads(Path(path).read_text(encoding="utf-8"))
+        return res
+
     return res
 
 
