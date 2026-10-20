@@ -88,6 +88,16 @@
         <button id="distBtn">Start: click 2 spots</button>
       </div>
       <div class="card">
+        <h3>Or: single points spread across the junction</h3>
+        <div class="hint">Better than one small rectangle: pick 4 or more features far apart (stop-line corner, median tip, kerb corner). Type the point's position in metres in your own site grid, press Add point, then click it.</div>
+        <div class="row">
+          <label>x (m) <input type="number" id="ptX" step="0.01"></label>
+          <label>y (m) <input type="number" id="ptY" step="0.01"></label>
+          <label>Role <select id="ptRole"><option value="fit">fit</option><option value="check">check</option></select></label>
+        </div>
+        <button id="ptBtn">Add point: click it</button>
+      </div>
+      <div class="card">
         <h3>C. Area where the mapping is valid</h3>
         <div class="hint">Click the corners of the road area around your spots, then press Finish area.</div>
         <div class="row"><button id="zoneBtn">Start area</button><button id="zoneDone">Finish area</button><button id="zoneClear" class="danger small">Clear</button></div>
@@ -287,6 +297,11 @@ function finish(m, got) {
     points = points.filter((p) => p.role !== "fit");
     got.forEach((px, i) => points.push({ id: "Z" + nextId(), px, m: ms[i], role: "fit" }));
     say("Rectangle added. Now add a tape check (B) and the valid area (C).");
+  } else if (m === "point") {
+    const x = parseFloat($("#ptX").value), y = parseFloat($("#ptY").value);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) { say("Type x and y in metres first, then start again.", "bad"); draw(); return; }
+    points.push({ id: "Z" + nextId(), px: got[0], m: [x, y], role: $("#ptRole").value });
+    say("Point added.");
   } else if (m === "dist") {
     const d = parseFloat($("#distM").value);
     if (!(d > 0)) { say("Type the tape distance first, then start again.", "bad"); draw(); return; }
@@ -409,6 +424,7 @@ $("#rectBtn").onclick = () => {
   if (points.some((p) => p.role === "fit") && !confirm("This replaces the rectangle corners you already have. Continue?")) return;
   setMode("rect", 4, "Click the 4 corners of the rectangle in order, going around. Esc cancels.");
 };
+$("#ptBtn").onclick = () => setMode("point", 1, "Click the ground feature whose position you typed.");
 $("#distBtn").onclick = () => setMode("dist", 2, "Click the two ground spots you measured with the tape.");
 $("#zoneBtn").onclick = () => setMode("zone", 0, "Click the corners of the valid road area, then press Finish area.");
 $("#zoneDone").onclick = () => {
