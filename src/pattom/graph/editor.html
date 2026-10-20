@@ -1990,6 +1990,9 @@ liveTimer = setInterval(liveTick, 800);
   // Load initial preset
   document.getElementById("presetBtn").click();
   initEventSource();
+  // Link straight to a result: http://127.0.0.1:8765/#preview=comparison
+  const m = location.hash.match(/^#preview=([\w-]+)/);
+  if (m && graph.nodes[m[1]]) setTimeout(() => openPreviewModal(m[1]), 300);
 })();
 </script>
 </body>
