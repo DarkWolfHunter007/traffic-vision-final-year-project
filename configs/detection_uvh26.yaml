@@ -1,0 +1,42 @@
+# UVH-26 detector config (Indian traffic-camera model with an auto-rickshaw class).
+# Copy to configs/detection.yaml and fill in after the test clip (T11, T12).
+# Every value here is PROPOSED. The class list is open (O7, T12).
+
+weights: models/UVH-26-MV-YOLOv11-S.pt   # UVH-26 (IISc AIM, Apache-2.0), sha256 12dbeb8f...0150          # must be inside models/; never downloaded automatically
+
+# Model label -> project class. Proposed classes: two_wheeler, auto_rickshaw,
+# car, bus, truck. A pretrained COCO model has no auto-rickshaw label; that
+# class needs the fine-tuned model (T14).
+class_map:                     # UVH-26 labels -> project classes (user, 20 Oct 2026; O7 still open)
+  Three-wheeler: auto_rickshaw
+  Two-wheeler: two_wheeler
+  Hatchback: car
+  Sedan: car
+  SUV: car
+  MUV: car
+  Van: car
+  tempo-traveller: car         # user decision 20 Oct 2026 (diesel; emission fuel to be set separately)
+  Bus: bus
+  Mini-bus: bus
+  Truck: truck
+  LCV: truck                   # PCU: Table 3.1 has light commercial 1.5; open
+
+# Labels the model can output that we drop on purpose. Their counts are
+# recorded in the run metadata. Any other unmapped label stops the run.
+# This is the rest of the COCO list used by the pretrained model; the
+# fine-tuned model will have its own labels. Bicycles are dropped because the
+# proposed class list has no cycle class (T12).
+ignore_labels: [bicycle, Others]   # dropped on purpose; counts recorded in the run metadata
+
+# Keep this low: ByteTrack uses the low-confidence boxes in its second stage.
+# Tuned on the test clip (ARCHITECTURE section 5).
+confidence_threshold: 0.1
+process_fps: 15                      # ARCHITECTURE 11: about 10-15 fps
+imgsz: 1280
+half: false                          # CPU or GPU compatible
+device: null                         # null = let Ultralytics choose; "0" = first GPU, "cpu"
+
+# Optional tiles for the far arm, in pixels of the prepared video: [x1, y1, x2, y2].
+tiles: []
+tile_imgsz: 1280
+merge_iou: 0.6
