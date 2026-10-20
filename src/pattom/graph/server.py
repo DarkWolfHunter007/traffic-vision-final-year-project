@@ -663,6 +663,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, CALIBRATE_HTML.read_bytes(), "text/html; charset=utf-8")
 
+        elif route == "/signals":
+            page = Path(__file__).with_name("signals.html")
+            self._send(200, page.read_bytes(), "text/html; charset=utf-8")
+
+        elif route == "/signals/load":
+            self._json(200, calib.load_signal_log())
+
         elif route == "/calib/state":
             self._json(200, calib.state())
 
@@ -864,6 +871,9 @@ class Handler(BaseHTTPRequestHandler):
                                       "--window-size", "900,700", "--window-pos", f"{i * 920},40",
                                       "--start", "true", "--quit-on-end", "false"], cwd=str(folder))
                 self._json(200, {"opened": True, "folder": str(folder.relative_to(REPO_ROOT))})
+
+            elif route == "/signals/save":
+                self._json(200, calib.save_signal_log(payload.get("rows") or []))
 
             elif route == "/calib/ground_check":
                 self._json(200, calib.check_ground(payload.get("mapping") or {}))

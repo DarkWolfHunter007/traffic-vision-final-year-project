@@ -132,6 +132,17 @@ def _editor(args) -> None:
     serve(args.port)
 
 
+def _count_check(args) -> None:
+    import csv
+
+    from pattom.count_check import compare
+
+    out = compare(Path(args.manual), Path(args.counts))
+    for r in csv.DictReader(open(out, encoding="utf-8")):
+        print(f"{r['line_name']:>12} {r['class']:>13}  manual {r['manual']:>5}  auto {r['automatic']:>5}  error {r['error_pct']}%")
+    print(f"written: {out}")
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="pattom")
     sub = p.add_subparsers(required=True)
@@ -192,6 +203,11 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--interval-s", type=float, default=900.0, help="interval length (default 15 min)")
     s.add_argument("--offset-s", type=float, default=0.0, help="start of this file within its slot")
     s.set_defaults(func=_count)
+
+    s = sub.add_parser("count-check", help="compare automated counts with your manual counts (error per line and class)")
+    s.add_argument("manual", help="manual counts CSV (see configs/manual_counts.example.csv)")
+    s.add_argument("counts", help="interval_counts.csv from the run")
+    s.set_defaults(func=_count_check)
 
     s = sub.add_parser("signals", help="check a signal log read from the footage and summarise cycles")
     s.add_argument("log")

@@ -372,3 +372,59 @@ def state() -> dict:
                            "enabled": (v or {}).get("enabled", True)}
                        for k, v in (ind.get("approaches") or {}).items()},
             "ground_mappings": sorted((ground.get("mappings") or {}).keys())}
+
+
+# --- Signal-timing logger (signals.html) ------------------------------------------
+
+SIGNAL_LOG = CONFIGS / "signal_log.csv"
+
+
+def load_signal_log() -> dict:
+    rows = []
+    if SIGNAL_LOG.is_file():
+        import csv as _csv
+
+        with open(SIGNAL_LOG, newline="", encoding="utf-8") as f:
+            for r in _csv.DictReader(f):
+                rows.append({"time_s": float(r["time_s"]), "signal_head": r["signal_head"].strip(),
+                             "state": r["state"].strip().lower()})
+    example = CONFIGS / "signal_log.example.csv"
+    is_template = example.is_file() and SIGNAL_LOG.is_file() and example.read_bytes() == SIGNAL_LOG.read_bytes()
+    return {"rows": rows, "is_template": is_template}
+
+
+def save_signal_log(rows: list[dict]) -> dict:
+    """Write configs/signal_log.csv from the logger, after the same checks the
+    pipeline uses (states, no repeats, no two changes at one time)."""
+    import csv as _csv
+    import tempfile
+
+    from pattom.signals import cycles, load_log
+
+    clean = []
+    for r in rows:
+        head = str(r.get("signal_head", "")).strip()
+        if not head:
+            raise CalibrationError("every change needs a signal head")
+        clean.append({"time_s": round(float(r["time_s"]), 2), "signal_head": head,
+                      "state": str(r.get("state", "")).strip().lower()})
+    if not clean:
+        raise CalibrationError("nothing to save")
+    clean.sort(key=lambda r: (r["signal_head"], r["time_s"]))
+    with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, newline="", encoding="utf-8") as tmp:
+        w = _csv.DictWriter(tmp, fieldnames=["time_s", "signal_head", "state"])
+        w.writeheader()
+        w.writerows(clean)
+        tmp_path = Path(tmp.name)
+    try:
+        log = load_log(tmp_path)
+    except ValueError as e:
+        raise CalibrationError(str(e).replace(str(tmp_path), "signal log")) from None
+    finally:
+        pass
+    if SIGNAL_LOG.is_file():
+        SIGNAL_LOG.with_name(SIGNAL_LOG.name + ".bak").write_bytes(SIGNAL_LOG.read_bytes())
+    SIGNAL_LOG.write_bytes(tmp_path.read_bytes())
+    tmp_path.unlink(missing_ok=True)
+    summary = {h: len(cycles(ch, h)) for h, ch in log.items()}
+    return {"saved": True, "rows": len(clean), "complete_cycles": summary}
