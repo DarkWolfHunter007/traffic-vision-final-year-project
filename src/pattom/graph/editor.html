@@ -1293,6 +1293,57 @@ function openPreviewModal(nodeId) {
       return;
     }
 
+    // Download bar: every result file of this step
+    if (data.files && data.files.length) {
+      const bar = document.createElement("div");
+      bar.style.cssText = "position:absolute; top:10px; right:56px; display:flex; gap:6px; flex-wrap:wrap; max-width:60%; justify-content:flex-end; z-index:5;";
+      data.files.forEach(f => {
+        const a = document.createElement("a");
+        a.href = f.url; a.download = f.name; a.textContent = `⬇ ${f.name}`; a.title = `${f.size_kb} KB`;
+        a.style.cssText = "font-size:11px; padding:3px 8px; border:1px solid var(--panel-border); border-radius:5px; color:var(--text); text-decoration:none; background:rgba(255,255,255,0.04);";
+        bar.appendChild(a);
+      });
+      document.querySelector("#modal .modal-box").style.position = "relative";
+      document.querySelectorAll("#modal .dl-bar").forEach(x => x.remove());
+      bar.className = "dl-bar";
+      document.querySelector("#modal .modal-box").appendChild(bar);
+    } else {
+      document.querySelectorAll("#modal .dl-bar").forEach(x => x.remove());
+    }
+
+    // Review: a gallery of flagged tracks, each with a cropped picture and its box
+    if (data.flags) {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "flex:1; overflow:auto; padding:16px;";
+      const reasons = ["all", ...new Set(data.flags.map(f => f.reason))];
+      const head = document.createElement("div");
+      head.style.cssText = "display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; align-items:center;";
+      if (data.notes && data.notes.length) {
+        const n = document.createElement("div"); n.style.cssText = "width:100%; color:var(--text-muted); font-size:12px;"; n.textContent = data.notes.join("; "); head.appendChild(n);
+      }
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px;";
+      const show = (reason) => {
+        grid.replaceChildren();
+        data.flags.filter(f => reason === "all" || f.reason === reason).forEach(f => {
+          const c = document.createElement("div");
+          c.style.cssText = "border:1px solid var(--panel-border); border-radius:6px; overflow:hidden; background:rgba(255,255,255,0.02);";
+          c.innerHTML = `<img src="${f.crop_url}" style="display:block; width:100%; background:#000;" loading="lazy">
+            <div style="padding:6px 8px; font-size:12px;"><b>#${f.track_id} ${f.class}</b> · conf ${(+f.confidence).toFixed(2)} · ${(+f.time_s).toFixed(1)} s<br>
+            <span style="color:var(--warn);">${f.reason}</span> <span style="color:var(--text-muted);">${f.detail}</span></div>`;
+          grid.appendChild(c);
+        });
+      };
+      reasons.forEach(r => {
+        const b = document.createElement("button");
+        const n = r === "all" ? data.flags.length : data.flags.filter(f => f.reason === r).length;
+        b.className = "node-btn"; b.textContent = `${r} (${n})`; b.onclick = () => show(r);
+        head.appendChild(b);
+      });
+      wrap.append(head, grid); body.appendChild(wrap); show("all");
+      return;
+    }
+
     // Video Player with Synced Canvas Overlay (for detect, track, cfr, undistort, count)
     if (data.video_url) {
       const vidWrap = document.createElement("div");
@@ -1711,6 +1762,7 @@ document.getElementById("presetBtn").onclick = () => {
       detect: { type: "detect", params: { slot: "test", config: "configs/detection.yaml" }, pos: [300, 40] },
       track: { type: "track", params: { config: "configs/tracker.yaml" }, pos: [560, 40] },
       ground: { type: "ground", params: { config: "calibration/ground.yaml" }, pos: [820, 40] },
+      review: { type: "review", params: {}, pos: [820, 190] },
       count: { type: "count", params: { lines: "configs/lines.yaml", interval_s: 900.0, offset_s: 0.0 }, pos: [1080, 40] },
       delay_queue: { type: "delay_queue", params: { definitions: "configs/definitions.yaml", allow_draft: true }, pos: [1080, 190] },
       indicators: { type: "indicators", params: { config: "configs/indicators.yaml" }, pos: [1340, 40] },
@@ -1728,6 +1780,8 @@ document.getElementById("presetBtn").onclick = () => {
       { from: "cfr.video", to: "detect.video" },
       { from: "detect.detections", to: "track.detections" },
       { from: "track.tracks", to: "ground.tracks" },
+      { from: "track.tracks", to: "review.tracks" },
+      { from: "cfr.video", to: "review.video" },
       { from: "ground.tracks", to: "count.tracks" },
       { from: "ground.tracks", to: "delay_queue.tracks" },
       { from: "count.counts", to: "indicators.counts" },

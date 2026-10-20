@@ -513,6 +513,14 @@ def _comparison(inputs, p):
                                             _load(p)["comparison"], out))}
 
 
+
+def _review(inputs, p):
+    from pattom.review import run_review
+
+    keys = ("low_confidence", "edge_margin_px", "min_boxes", "random_tracks", "seed")
+    return {"flags": str(run_review(_path(inputs["tracks"]), _path(inputs["video"]), {k: p[k] for k in keys}))}
+
+
 _P = Port
 _TYPES = [
     NodeType(
@@ -571,6 +579,22 @@ _TYPES = [
         required=(),
         param_schema={
             "config": {"type": "file", "label": "Tracker Config YAML", "filter": [".yaml", ".yml"], "default": _cfg("tracker.yaml"), "required": True},
+        },
+    ),
+    NodeType(
+        name="review",
+        label="Review flags with pictures (E)",
+        category="Perception",
+        inputs=(_P("tracks", "tracks"), _P("video", "video")),
+        outputs=(_P("flags", "flags"),),
+        params={"low_confidence": 0.4, "edge_margin_px": 80, "min_boxes": 5, "random_tracks": 10, "seed": 1},
+        run=_review,
+        param_schema={
+            "low_confidence": {"type": "number", "label": "Flag boxes below this confidence (tool setting)", "default": 0.4, "min": 0.0, "max": 1.0, "step": 0.05},
+            "edge_margin_px": {"type": "number", "label": "Frame-edge margin, px (tool setting)", "default": 80, "min": 0, "step": 10},
+            "min_boxes": {"type": "number", "label": "Flag tracks with fewer boxes than", "default": 5, "min": 1, "step": 1},
+            "random_tracks": {"type": "number", "label": "Random tracks to check", "default": 10, "min": 0, "step": 1},
+            "seed": {"type": "number", "label": "Random seed", "default": 1, "min": 0, "step": 1},
         },
     ),
     NodeType(

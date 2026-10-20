@@ -265,6 +265,17 @@ def generate_node_preview(node_id: str, spec: dict[str, Any] | None = None) -> d
         except Exception:
             return f"/media/{p.as_posix()}"
 
+    # Every result file this step wrote (and the other tables in its folder), for download
+    files = []
+    for v in (outputs or {}).values():
+        fp = Path(v)
+        if fp.is_file():
+            files.append(fp)
+            files += sorted(x for x in fp.parent.glob("*.csv") if x != fp)
+    seen = set()
+    res["files"] = [{"name": f.name, "url": _media_rel(str(f)), "size_kb": round(f.stat().st_size / 1024, 1)}
+                    for f in files if not (f in seen or seen.add(f))]
+
     # Helper to find upstream video
     def _find_upstream_video() -> str | None:
         if "video" in outputs:
@@ -461,6 +472,18 @@ def generate_node_preview(node_id: str, spec: dict[str, Any] | None = None) -> d
             res["notes"] = _run_notes(Path(path).parent / meta)
             if not res["table"]:
                 res["notes"].append("No rows.")
+        return res
+
+    if node_type == "review":
+        path = outputs.get("flags")
+        if path and Path(path).is_file():
+            base = Path(path).parent.parent
+            with open(path, newline="", encoding="utf-8") as f:
+                flags = list(csv.DictReader(f))
+            for fl in flags:
+                fl["crop_url"] = _media_rel(str(base / fl["crop"]))
+            res["flags"] = flags
+            res["notes"] = _run_notes(Path(path).parent / "review_flags.run.json")
         return res
 
     if node_type in ("alternatives", "mce", "sumo_inputs"):

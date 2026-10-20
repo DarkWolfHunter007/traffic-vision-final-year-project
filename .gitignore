@@ -32,3 +32,4 @@ outputs/
 configs/decision.yaml
 configs/sumo.yaml
 configs/flowtest/
+live_preview*.jpg
