@@ -28,6 +28,68 @@ from pattom.paths import REPO_ROOT
 from pattom.runmeta import code_revision, sha256_file
 
 CACHE_DIR = REPO_ROOT / ".cache" / "graph"
+PKG = REPO_ROOT / "src" / "pattom"
+
+# The code each stage runs. A stage's cache is kept until one of these files
+# changes, so an unrelated commit (or an editor change) does not re-run YOLO.
+STAGE_SOURCES: dict[str, tuple[str, ...]] = {
+    "cfr": ("prepare.py", "runmeta.py"),
+    "undistort": ("prepare.py", "runmeta.py"),
+    "detect": ("detection.py", "boxes.py", "prepare.py", "runmeta.py"),
+    "track": ("tracking.py", "kalman.py", "boxes.py", "runmeta.py"),
+    "ground": ("ground.py", "runmeta.py"),
+    "review": ("review.py",),
+    "count": ("counting.py", "ground.py", "runmeta.py"),
+    "delay_queue": ("delay.py", "signals.py", "ground.py", "runmeta.py"),
+    "emissions": ("emissions.py", "register.py", "values.py", "runmeta.py"),
+    "indicators": ("indicators.py", "capacity.py", "signals.py", "register.py", "values.py", "runmeta.py"),
+    "congestion": ("congestion.py", "runmeta.py"),
+    "problems": ("analysis.py", "tables.py", "runmeta.py"),
+    "alternatives": ("alternatives.py", "signals.py", "capacity.py", "tables.py", "register.py"),
+    "pre_sumo": ("alternatives.py", "capacity.py", "tables.py", "register.py"),
+    "mce": ("alternatives.py", "tables.py"),
+    "sumo_inputs": ("sumo.py", "tables.py"),
+    "sumo_run": ("sumo.py", "tables.py"),
+    "comparison": ("sumo.py", "tables.py", "register.py"),
+}
+USES_REGISTER = {"emissions", "indicators", "alternatives", "pre_sumo", "comparison"}
+
+# Files a stage reads from its input's folder besides the input itself.
+IMPLICIT_INPUTS: dict[str, tuple[str, ...]] = {
+    "count": ("track_summary.csv",),
+    "delay_queue": ("track_summary.csv",),
+    "emissions": ("vehicle_delay.csv",),
+    "indicators": ("stopped_delay.csv", "queue.csv", "interval_counts.csv"),
+    "comparison": ("stopped_delay.csv", "queue.csv"),
+}
+
+_SHA_MEMO: dict[tuple[str, int, int], str] = {}
+
+
+def file_sha(p: Path) -> str:
+    """SHA-256 of a file, remembered by (path, size, modified time) so an 11 GB
+    video is hashed once, not on every run."""
+    st = p.stat()
+    key = (str(p.resolve()), st.st_size, st.st_mtime_ns)
+    if key not in _SHA_MEMO:
+        _SHA_MEMO[key] = sha256_file(p)
+    return _SHA_MEMO[key]
+
+
+def stage_code_hash(node_type_name: str) -> str:
+    h = hashlib.sha256()
+    names = STAGE_SOURCES.get(node_type_name)
+    if names is None:  # unknown stage: fall back to the whole package revision
+        return code_revision()
+    for n in names:
+        f = PKG / n
+        h.update(n.encode())
+        h.update(f.read_bytes() if f.is_file() else b"missing")
+    if node_type_name in USES_REGISTER:
+        reg = REPO_ROOT / "sources" / "register.yaml"
+        if reg.is_file():
+            h.update(reg.read_bytes())
+    return h.hexdigest()
 
 
 class GraphError(ValueError):
@@ -139,7 +201,7 @@ def compute_cache_key(node_type_name: str, inputs: dict[str, Any], params: dict[
     """Hash of inputs content + params + config contents + model weights + code rev."""
     h = hashlib.sha256()
     h.update(node_type_name.encode("utf-8"))
-    h.update(code_revision().encode("utf-8"))
+    h.update(stage_code_hash(node_type_name).encode("utf-8"))
 
     # Hash input files by content
     for port_name in sorted(inputs.keys()):
@@ -147,7 +209,10 @@ def compute_cache_key(node_type_name: str, inputs: dict[str, Any], params: dict[
         p = _resolve_file_path(val)
         if p and p.is_file():
             h.update(port_name.encode("utf-8"))
-            h.update(sha256_file(p).encode("utf-8"))
+            h.update(file_sha(p).encode("utf-8"))
+            for sibling in IMPLICIT_INPUTS.get(node_type_name, ()):
+                sp = p.parent / sibling
+                h.update(f"{sibling}:{file_sha(sp) if sp.is_file() else 'absent'}".encode("utf-8"))
         else:
             h.update(f"{port_name}:{val}".encode("utf-8"))
 
@@ -157,7 +222,7 @@ def compute_cache_key(node_type_name: str, inputs: dict[str, Any], params: dict[
         h.update(k.encode("utf-8"))
         p = _resolve_file_path(val)
         if p and p.is_file():
-            h.update(sha256_file(p).encode("utf-8"))
+            h.update(file_sha(p).encode("utf-8"))
             # If it's a YAML config, also hash any referenced weights or subfiles
             if p.suffix.lower() in (".yaml", ".yml"):
                 try:
@@ -166,7 +231,7 @@ def compute_cache_key(node_type_name: str, inputs: dict[str, Any], params: dict[
                         weights_path = cfg_data.get("weights")
                         wp = _resolve_file_path(weights_path)
                         if wp and wp.is_file():
-                            h.update(sha256_file(wp).encode("utf-8"))
+                            h.update(file_sha(wp).encode("utf-8"))
                 except Exception:
                     pass
         else:
@@ -193,7 +258,7 @@ def check_cache(node_id: str, cache_key: str) -> dict[str, str] | None:
             if not p.is_file():
                 return None
             stored_sha = output_shas.get(port_name)
-            if stored_sha and sha256_file(p) != stored_sha:
+            if stored_sha and file_sha(p) != stored_sha:
                 return None
         return outputs
     except Exception:
@@ -209,7 +274,7 @@ def write_cache(node_id: str, cache_key: str, outputs: dict[str, str]) -> None:
         for port_name, path_str in outputs.items():
             p = Path(path_str)
             if p.is_file():
-                output_shas[port_name] = sha256_file(p)
+                output_shas[port_name] = file_sha(p)
         payload = {
             "cache_key": cache_key,
             "outputs": outputs,

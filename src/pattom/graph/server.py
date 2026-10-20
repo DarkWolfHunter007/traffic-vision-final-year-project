@@ -37,6 +37,7 @@ from pattom.graph.engine import (
     GraphError,
     check_cache,
     compute_cache_key,
+    get_ancestors,
     load_graph,
     run_graph,
     validate_graph,
@@ -112,6 +113,10 @@ class ExecutionManager:
                     self.subscribers.remove(q)
 
     def start_run(self, spec: dict[str, Any], target_node_id: str | None = None, force: bool = False) -> str:
+        order = validate_graph(spec)  # an invalid graph raises here, before the state changes
+        if target_node_id:
+            needed = get_ancestors(spec, target_node_id)
+            order = [n for n in order if n in needed]
         with self.lock:
             if self.state == "running":
                 raise RuntimeError("A pipeline execution is already in progress. Stop it first.")
@@ -119,7 +124,7 @@ class ExecutionManager:
             self.run_id = f"run_{int(time.time())}"
             self.active_spec = spec
             self.target_node = target_node_id
-            self.order = validate_graph(spec)
+            self.order = order
             self.node_status = {n: "queued" for n in self.order}
             self.node_elapsed = {}
             self.node_errors = {}
@@ -232,7 +237,9 @@ def _get_node_outputs(node_id: str, spec: dict[str, Any] | None = None) -> dict[
                 if sub.is_dir():
                     if t == "detect" and (sub / "detections.csv").is_file():
                         return {"detections": str(sub / "detections.csv")}
-                    if t in ("track", "ground") and (sub / "tracks.csv").is_file():
+                    if t == "ground" and (sub / "tracks_ground.csv").is_file():
+                        return {"tracks": str(sub / "tracks_ground.csv")}
+                    if t == "track" and (sub / "tracks.csv").is_file():
                         return {"tracks": str(sub / "tracks.csv")}
                     if t == "count" and (sub / "interval_counts.csv").is_file():
                         return {"counts": str(sub / "interval_counts.csv")}
@@ -336,35 +343,10 @@ def generate_node_preview(node_id: str, spec: dict[str, Any] | None = None) -> d
             p = Path(trk_path)
             res["tracks_csv"] = _media_rel(str(p))
             res["video_url"] = _find_upstream_video()
-            class_counts: dict[str, int] = {}
-            track_ids = set()
-            points_by_time: list[dict[str, Any]] = []
-
-            # Read tracks
-            with open(p, newline="", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    tid = int(row["track_id"])
-                    track_ids.add(tid)
-                    cls = row.get("class", "unknown")
-                    class_counts[cls] = class_counts.get(cls, 0) + 1
-                    # Collect box points with time_s for browser overlay
-                    points_by_time.append({
-                        "t": float(row["time_s"]),
-                        "id": tid,
-                        "c": cls,
-                        "conf": round(float(row.get("confidence", 1.0)), 2),
-                        "box": [
-                            round(float(row["x1"]), 1),
-                            round(float(row["y1"]), 1),
-                            round(float(row["x2"]), 1),
-                            round(float(row["y2"]), 1),
-                        ],
-                    })
-
-            res["total_tracks"] = len(track_ids)
-            res["class_counts"] = class_counts
-            res["points"] = points_by_time  # Streamed for synchronous canvas overlay synced by time_s
+            index = _track_index(p)
+            res["total_tracks"] = index["n_tracks"]
+            res["class_counts"] = index["class_counts"]
+            res["points_url"] = "/points?file=" + urllib.parse.quote(str(p.relative_to(REPO_ROOT).as_posix()))
         return res
 
     if node_type == "count":
@@ -385,15 +367,7 @@ def generate_node_preview(node_id: str, spec: dict[str, Any] | None = None) -> d
             # Boxes under the lines, from the tracks file of the same run
             trk_file = p.parent / "tracks.csv"
             if trk_file.is_file():
-                pts = []
-                with open(trk_file, newline="", encoding="utf-8") as f:
-                    for row in csv.DictReader(f):
-                        pts.append({
-                            "t": float(row["time_s"]), "id": int(row["track_id"]),
-                            "c": row.get("class", "unknown"),
-                            "box": [round(float(row[k]), 1) for k in ("x1", "y1", "x2", "y2")],
-                        })
-                res["points"] = pts
+                res["points_url"] = "/points?file=" + urllib.parse.quote(trk_file.relative_to(REPO_ROOT).as_posix())
 
             # Read interval counts table
             table = []
@@ -507,6 +481,36 @@ def generate_node_preview(node_id: str, spec: dict[str, Any] | None = None) -> d
     return res
 
 
+_TRACK_INDEX: dict[str, tuple[int, dict[str, Any]]] = {}
+
+
+def _track_index(path: Path) -> dict[str, Any]:
+    """Track boxes grouped by whole second, read once per file version, so the
+    viewer can ask for just the part of the video being played."""
+    key, mtime = str(path.resolve()), path.stat().st_mtime_ns
+    hit = _TRACK_INDEX.get(key)
+    if hit and hit[0] == mtime:
+        return hit[1]
+    by_sec: dict[int, list[dict[str, Any]]] = {}
+    class_counts: dict[str, int] = {}
+    ids = set()
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            t = float(row["time_s"])
+            tid = int(row["track_id"])
+            cls = row.get("class", "unknown")
+            ids.add(tid)
+            class_counts[cls] = class_counts.get(cls, 0) + 1
+            by_sec.setdefault(int(t), []).append({
+                "t": t, "id": tid, "c": cls, "conf": round(float(row.get("confidence") or 1.0), 2),
+                "box": [round(float(row[k]), 1) for k in ("x1", "y1", "x2", "y2")]})
+    index = {"by_sec": by_sec, "class_counts": class_counts, "n_tracks": len(ids)}
+    if len(_TRACK_INDEX) > 8:
+        _TRACK_INDEX.clear()
+    _TRACK_INDEX[key] = (mtime, index)
+    return index
+
+
 def _run_notes(path: Path) -> list[str]:
     """Notes a stage wrote into its .run.json (why a value is missing, and so on)."""
     try:
@@ -540,7 +544,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -576,7 +579,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
                 self.send_header("Content-Length", str(length))
                 self.send_header("Accept-Ranges", "bytes")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
 
                 with open(path, "rb") as f:
@@ -600,7 +602,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(file_size))
         self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
         try:
@@ -629,7 +630,23 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.NOT_FOUND)
         self.end_headers()
 
+    def _local_only(self) -> bool:
+        """Serve only the editor's own pages: the Host must be this machine, and a
+        cross-site request (another web page in the same browser) is refused."""
+        port = self.server.server_address[1]
+        ok_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        host = (self.headers.get("Host") or "").lower()
+        origin = (self.headers.get("Origin") or "").lower()
+        site = (self.headers.get("Sec-Fetch-Site") or "").lower()
+        allowed = (host in ok_hosts and (not origin or origin in {f"http://{h}" for h in ok_hosts})
+                   and site != "cross-site")
+        if not allowed:
+            self._json(403, {"error": "Requests are accepted only from the editor page on this PC."})
+        return allowed
+
     def do_GET(self) -> None:
+        if not self._local_only():
+            return
         parsed = urllib.parse.urlparse(self.path)
         route = parsed.path
         qs = urllib.parse.parse_qs(parsed.query)
@@ -667,6 +684,17 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(jpg)
 
+        elif route == "/points":
+            p = safe_repo_path(qs.get("file", [""])[0])
+            if not p or not p.is_file() or p.suffix != ".csv":
+                self._json(404, {"error": "track file not found"})
+                return
+            t0 = float(qs.get("t0", ["0"])[0])
+            t1 = float(qs.get("t1", ["30"])[0])
+            by_sec = _track_index(p)["by_sec"]
+            pts = [pt for sec in range(int(t0), int(t1) + 1) for pt in by_sec.get(sec, []) if t0 <= pt["t"] <= t1]
+            self._json(200, {"t0": t0, "t1": t1, "points": pts})
+
         elif route == "/live":
             # Newest live_preview.jpg written by a running detection (display only)
             files = sorted((REPO_ROOT / "runs").glob("*/*/live_preview.jpg"), key=lambda p: p.stat().st_mtime)
@@ -696,7 +724,6 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.send_header("Connection", "keep-alive")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
 
             q = EXEC_MGR.subscribe()
@@ -787,6 +814,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": f"Not found: {route}"})
 
     def do_POST(self) -> None:
+        if not self._local_only():
+            return
         route = self.path
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length > 0 else b"{}"
@@ -870,8 +899,10 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(400, {"error": "path and content are required"})
                     return
                 p = safe_repo_path(req_path)
-                if not p:
-                    self._json(403, {"error": "Path traversal prohibited"})
+                allowed_dirs = (REPO_ROOT / "configs", CALIBRATION)
+                if not p or p.suffix.lower() not in (".yaml", ".yml", ".csv") or not any(
+                        d in p.parents for d in allowed_dirs) or p.name.endswith(".example.yaml"):
+                    self._json(403, {"error": "Only config files in configs/ or calibration/ can be saved here"})
                     return
                 try:
                     # Validate YAML syntax

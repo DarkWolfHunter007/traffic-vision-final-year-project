@@ -1440,6 +1440,15 @@ function openPreviewModal(nodeId) {
 
       // Track trajectory history cache: { trackId: [[x,y], ...] }
       const trails = {};
+      // Track boxes are fetched for the part of the video being played (a 1-hour run has millions)
+      let pts = data.points || [], win = [-1, -1], loading = false;
+      const ensurePoints = (t) => {
+        if (!data.points_url || loading || (t >= win[0] && t + 3 <= win[1])) return;
+        loading = true;
+        const a = Math.max(0, t - 2), b = t + 30;
+        fetch(`${data.points_url}&t0=${a}&t1=${b}`).then(r => r.json())
+          .then(d => { pts = d.points || []; win = [a, b]; loading = false; }).catch(() => { loading = false; });
+      };
       const classColors = {
         car: "#3b82f6",
         two_wheeler: "#10b981",
@@ -1484,10 +1493,11 @@ function openPreviewModal(nodeId) {
         }
 
         // Draw bounding boxes for tracks holding last box between rows
-        if (data.points && data.points.length) {
+        ensurePoints(curTime);
+        if (pts.length) {
           // Find active tracks visible at curTime (within last 0.8s)
           const latestBoxes = {};
-          data.points.forEach(pt => {
+          pts.forEach(pt => {
             if (pt.t <= curTime && curTime - pt.t <= 0.8) {
               latestBoxes[pt.id] = pt;
             }
@@ -1842,7 +1852,7 @@ document.getElementById("presetBtn").onclick = () => {
       ground: { type: "ground", params: { config: "calibration/ground.yaml" }, pos: [820, 40] },
       review: { type: "review", params: {}, pos: [820, 190] },
       count: { type: "count", params: { lines: "configs/lines.yaml", interval_s: 900.0, offset_s: 0.0 }, pos: [1080, 40] },
-      delay_queue: { type: "delay_queue", params: { definitions: "configs/definitions.yaml", allow_draft: true }, pos: [1080, 190] },
+      delay_queue: { type: "delay_queue", params: { definitions: "configs/definitions.yaml", signal_log: "configs/signal_log.csv", allow_draft: true }, pos: [1080, 190] },
       indicators: { type: "indicators", params: { config: "configs/indicators.yaml" }, pos: [1340, 40] },
       emissions: { type: "emissions", params: { config: "configs/emissions.yaml" }, pos: [1340, 190] },
       congestion: { type: "congestion", params: { formula: "configs/congestion.yaml" }, pos: [1600, 40] },
@@ -1957,6 +1967,10 @@ function initEventSource() {
         updateRunState(msg.data.state);
         appendLog(`Pipeline finished with state: ${msg.data.state}`, "sys");
         render();
+      } else if (msg.type === "error") {
+        updateRunState("failed");
+        appendLog(`Run stopped with an error: ${msg.data.error}`, "sys");
+        render();
       } else if (msg.type === "status_change") {
         updateRunState(msg.data.state);
         render();
@@ -1996,8 +2010,20 @@ liveTimer = setInterval(liveTick, 800);
   nodeTypes = Object.fromEntries(typesList.map(t => [t.name, t]));
   setupPalette();
 
-  // Load initial preset
-  document.getElementById("presetBtn").click();
+  // Restore the graph you were working on; the preset only when there is none
+  let restored = false;
+  try {
+    const saved = JSON.parse(localStorage.getItem("pattom.graph") || "null");
+    if (saved && saved.nodes && Object.values(saved.nodes).every(n => nodeTypes[n.type])) {
+      graph = saved; restored = true; render(); renderInspector && renderInspector(); renderValidation && renderValidation();
+      appendLog("Restored your last graph (Load Demo Preset resets it).", "sys");
+    }
+  } catch (e) {}
+  if (!restored) document.getElementById("presetBtn").click();
+  let lastSaved = "";
+  setInterval(() => {
+    try { const s = JSON.stringify(graph); if (s !== lastSaved) { localStorage.setItem("pattom.graph", s); lastSaved = s; } } catch (e) {}
+  }, 1500);
   initEventSource();
   // Link straight to a result: http://127.0.0.1:8765/#preview=comparison
   const m = location.hash.match(/^#preview=([\w-]+)/);

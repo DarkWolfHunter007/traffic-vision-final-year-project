@@ -68,6 +68,7 @@ def load_config(path: Path) -> dict:
     if not active_approaches:
         raise ValueError("No approach has complete data (both width_m and signal_head). Enable or configure at least one approach.")
 
+    cfg["_skipped_approaches"] = sorted(set(cfg.get("approaches") or {}) - set(active_approaches))
     cfg["approaches"] = active_approaches
     if cfg["effective_green"] not in GREEN_METHODS:
         raise ValueError(f"effective_green must be one of {GREEN_METHODS}")
@@ -147,6 +148,8 @@ def run_indicators(run_dir: Path, config: Path, signal_log: Path, register: Regi
         video_sha256=meta["video_sha256"], fps=meta["fps"], width=meta["width"], height=meta["height"],
         parameters={"config": str(config), "config_sha256": sha256_file(config),
                     "signal_log": str(signal_log), "signal_log_sha256": sha256_file(signal_log),
-                    "signal_summary": summary(load_log(signal_log)), "rows": len(rows)},
+                    "signal_summary": summary(load_log(signal_log)), "rows": len(rows),
+                    "notes": [f"approach(es) left out (disabled, or width/signal head missing): {cfg['_skipped_approaches']}"]
+                    if cfg.get("_skipped_approaches") else []},
     ).write(run_dir / "indicators.run.json")
     return out

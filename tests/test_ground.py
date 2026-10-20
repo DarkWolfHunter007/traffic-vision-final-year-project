@@ -67,11 +67,13 @@ def test_map_tracks_fills_bottom_centre(tmp_path):
         w.writerow([0, 0, 2, "car", 0.9, 0, 0, 2, 2, "", ""])
     tracks.with_suffix(".run.json").write_text(json.dumps(
         {"slot": "t", "video_file": "v", "video_sha256": "x", "fps": 30, "width": 1, "height": 1}))
-    ground.map_tracks(tracks, cal)
-    rows = list(csv.DictReader(open(tracks)))
+    out = ground.map_tracks(tracks, cal)
+    assert out.name == "tracks_ground.csv"
+    assert list(csv.DictReader(open(tracks)))[0]["ground_x_m"] == ""   # the tracker's file is untouched
+    rows = list(csv.DictReader(open(out)))
     assert float(rows[0]["ground_x_m"]) == pytest.approx(4, abs=1e-3)
     assert rows[1]["ground_x_m"] == ""
-    assert json.loads((tmp_path / "ground.run.json").read_text())["parameters"]["rows_mapped"] == 1
+    assert json.loads((tmp_path / "tracks_ground.run.json").read_text())["parameters"]["rows_mapped"] == 1
 
 
 def test_drift_check_finds_shift():

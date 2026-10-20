@@ -97,6 +97,22 @@ def run_review(tracks_csv: Path, video: Path, params: dict[str, Any]) -> Path:
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     end_s = (cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) / fps
     flags = find_flags(tracks_csv, w, h, end_s, params)
+    # Keep the review manageable on long videos: at most max_per_reason flags per reason
+    # (a seeded random pick), and say how many were left out.
+    cap_n = int(params.get("max_per_reason") or 0)
+    dropped: dict[str, int] = {}
+    if cap_n > 0:
+        by_reason: dict[str, list[dict]] = defaultdict(list)
+        for f in flags:
+            by_reason[f["reason"]].append(f)
+        rng = random.Random(int(params["seed"]))
+        flags = []
+        for reason, fs in by_reason.items():
+            if len(fs) > cap_n:
+                dropped[reason] = len(fs) - cap_n
+                fs = rng.sample(fs, cap_n)
+            flags.extend(fs)
+        flags.sort(key=lambda f: (f["time_s"], f["track_id"]))
     out_dir = Path(tracks_csv).parent / "review"
     crops = out_dir / "crops"
     crops.mkdir(parents=True, exist_ok=True)
@@ -126,6 +142,8 @@ def run_review(tracks_csv: Path, video: Path, params: dict[str, Any]) -> Path:
     (out_dir / "review_flags.run.json").write_text(json.dumps({
         "stage": "E.review", "video_file": str(video), "tracks": str(tracks_csv), "parameters": {
             **params, "notes": [f"{len(flags)} flag(s): " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()))
-                                + ". Thresholds are tool settings, not study values."]}}, indent=2), encoding="utf-8")
+                                + ". Thresholds are tool settings, not study values."]
+            + ([f"Left out to keep the review short (random pick kept): {dropped}"] if dropped else [])}},
+        indent=2), encoding="utf-8")
     print(f"review: {len(flags)} flag(s) on {len({f['track_id'] for f in flags})} track(s): {dict(counts)}", flush=True)
     return out
