@@ -1447,7 +1447,13 @@ function openPreviewModal(nodeId) {
       wrap.style.overflow = "auto";
       wrap.style.padding = "16px";
 
-      const rows = data.indicators || data.congestion || data.stopped_delays || data.queues;
+      const rows = data.indicators || data.congestion || data.emissions || data.stopped_delays || data.queues;
+      if (data.notes && data.notes.length) {
+        const n = document.createElement("div");
+        n.style.cssText = "color:var(--warn);margin-bottom:10px;";
+        n.textContent = "Notes from this step: " + data.notes.join("; ");
+        wrap.appendChild(n);
+      }
       if (rows && rows.length) {
         const tbl = document.createElement("table");
         tbl.className = "data-table";

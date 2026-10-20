@@ -439,9 +439,28 @@ def generate_node_preview(node_id: str, spec: dict[str, Any] | None = None) -> d
                 for row in csv.DictReader(f):
                     rows.append(row)
             res["congestion"] = rows
+            res["notes"] = _run_notes(Path(ci_path).parent / "congestion.run.json")
+        return res
+
+    if node_type == "emissions":
+        em_path = outputs.get("emissions")
+        if em_path and Path(em_path).is_file():
+            with open(em_path, newline="", encoding="utf-8") as f:
+                res["emissions"] = list(csv.DictReader(f))
+            res["notes"] = _run_notes(Path(em_path).parent / "emissions.run.json")
         return res
 
     return res
+
+
+def _run_notes(path: Path) -> list[str]:
+    """Notes a stage wrote into its .run.json (why a value is missing, and so on)."""
+    try:
+        meta = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    notes = (meta.get("parameters") or {}).get("notes") or meta.get("notes") or []
+    return [notes] if isinstance(notes, str) else [str(n) for n in notes]
 
 
 def scan_run_history() -> list[dict[str, Any]]:
