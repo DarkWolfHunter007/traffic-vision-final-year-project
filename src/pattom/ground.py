@@ -144,7 +144,8 @@ def bottom_centre(x1: float, y1: float, x2: float, y2: float) -> tuple[float, fl
 
 
 def map_tracks(tracks_csv: Path, cal: GroundCalibration) -> Path:
-    """Fill ground_x_m / ground_y_m in tracks.csv (in place, with run metadata)."""
+    """Write tracks_ground.csv: tracks.csv with ground_x_m / ground_y_m filled in.
+    tracks.csv itself is left as the tracker wrote it (each step writes a new file)."""
     with open(tracks_csv, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         fields = reader.fieldnames
@@ -154,12 +155,13 @@ def map_tracks(tracks_csv: Path, cal: GroundCalibration) -> Path:
         g = cal.locate(*bottom_centre(*(float(r[k]) for k in ("x1", "y1", "x2", "y2"))))
         r["ground_x_m"], r["ground_y_m"] = ("", "") if g is None else (round(g[0], 3), round(g[1], 3))
         inside += g is not None
-    tmp = tracks_csv.with_suffix(".tmp")
+    out = tracks_csv.with_name("tracks_ground.csv")
+    tmp = out.with_suffix(".tmp")
     with open(tmp, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         w.writerows(rows)
-    tmp.replace(tracks_csv)
+    tmp.replace(out)
     meta = json.loads(tracks_csv.with_suffix(".run.json").read_text(encoding="utf-8"))
     RunMetadata(
         slot=meta["slot"],
@@ -171,9 +173,9 @@ def map_tracks(tracks_csv: Path, cal: GroundCalibration) -> Path:
         height=meta["height"],
         parameters={"ground_config": cal.source_file, "ground_config_sha256": cal.source_sha256,
                     "mapping_report": cal.report(), "rows": len(rows), "rows_mapped": inside,
-                    "ground_point": "bottom centre of box"},
-    ).write(tracks_csv.parent / "ground.run.json")
-    return tracks_csv
+                    "ground_point": "bottom centre of box", "source_tracks": str(tracks_csv)},
+    ).write(out.with_suffix(".run.json"))
+    return out
 
 
 # --- Camera drift ----------------------------------------------------------

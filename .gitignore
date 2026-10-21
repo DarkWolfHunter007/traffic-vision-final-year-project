@@ -24,3 +24,13 @@ configs/definitions.yaml
 configs/emissions.yaml
 configs/indicators.yaml
 configs/congestion.yaml
+configs/signal_log.csv
+.cache/
+_backup_before_switch/
+outputs/
+*.yaml.bak
+configs/decision.yaml
+configs/sumo.yaml
+configs/flowtest/
+live_preview*.jpg
+*.csv.bak

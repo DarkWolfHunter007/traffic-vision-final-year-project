@@ -158,8 +158,10 @@ def assign_movements(crossings: list[dict], movements: list[Movement]) -> dict[i
 
 
 def interval_counts(crossings: list[dict], track_moves: dict[int, tuple[str, str]], slot: str,
-                    interval_s: float, offset_s: float = 0.0) -> list[dict]:
-    """Counts per line and interval. offset_s places this file within its slot."""
+                    interval_s: float, offset_s: float = 0.0, video_end_s: float | None = None) -> list[dict]:
+    """Counts per line and interval. offset_s places this file within its slot.
+    An interval that runs past the end of the video ends at the video's end, so a
+    flow per hour is never computed over time that was not recorded."""
     c = Counter()
     for x in crossings:
         if x["line_type"] == "exit":
@@ -169,7 +171,9 @@ def interval_counts(crossings: list[dict], track_moves: dict[int, tuple[str, str
         move = track_moves.get(x["track_id"], (x["approach"], "unknown"))[1]
         c[(start, x["line_name"], x["line_type"], x["approach"], move, x["class"])] += 1
     return [
-        {"slot": slot, "interval_start_s": s, "interval_end_s": s + float(interval_s), "line_name": ln,
+        {"slot": slot, "interval_start_s": s,
+         "interval_end_s": round(min(s + float(interval_s), offset_s + video_end_s), 3) if video_end_s else s + float(interval_s),
+         "line_name": ln,
          "line_type": lt, "approach": ap, "movement": mv, "class": cl, "count": n, "value_type": "measured"}
         for (s, ln, lt, ap, mv, cl), n in sorted(c.items())
     ]
@@ -187,7 +191,14 @@ def run_counting(tracks_csv: Path, lines_yaml: Path, interval_s: float, offset_s
         w.writeheader()
         for x in crossings:
             w.writerow({**x, "movement": moves.get(x["track_id"], (None, "unknown"))[1]})
-    counts = interval_counts(crossings, moves, meta["slot"], interval_s, offset_s)
+    det_meta = tracks_csv.parent / "detections.run.json"
+    video_end_s = None
+    if det_meta.is_file():
+        dm = json.loads(det_meta.read_text(encoding="utf-8"))
+        frames, fps = (dm.get("parameters") or {}).get("frames_read"), dm.get("fps")
+        if frames and fps:
+            video_end_s = float(frames) / float(fps)
+    counts = interval_counts(crossings, moves, meta["slot"], interval_s, offset_s, video_end_s)
     out = out_dir / "interval_counts.csv"
     with open(out, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=INTERVAL_FIELDS)

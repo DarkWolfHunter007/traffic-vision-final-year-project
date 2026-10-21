@@ -1,0 +1,24 @@
+# Copy to configs/sumo.yaml. Step L and M: SUMO for the existing case and the
+# single MCE-selected alternative only (D1). Built on this PC; nothing downloaded.
+# Coordinates in metres, x east, y north.
+
+centre_xy:                    # junction centre, e.g. [0, 0]
+approaches: {}                # {north: {end_xy: [x, y], lanes_in: , lanes_out: , speed_kmh: }, ...}
+vtypes: {}                    # per class, from the footage or a registered source (no SUMO defaults, D15)
+#   car: {length_m: , min_gap_m: , max_speed_kmh: , accel: , decel: }
+
+inputs: {}
+#   approach_groups: {north: NS, east: EW}
+#   phase_order: [NS, EW]
+#   all_red_s:                # measured
+#   demand_line_type:         # arrival or stop_line
+#   unknown_movement:         # exclude or proportional
+
+run: {}
+#   seeds: []                 # several, chosen before the runs, the same for both cases
+#   warmup_s:
+
+comparison: {}
+#   emission_method:          # none or registered_idle_factors (O18)
+#   class_fuel: {}            # {car: {idle_row: car_petrol, fuel: petrol}, ...}
+#   calibration_tolerance:    # O14, agreed with the guide

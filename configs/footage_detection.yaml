@@ -1,0 +1,45 @@
+# Detection config for raw-video/ footage (COCO-pretrained yolo11m, NOT fine-tuned for Kerala traffic).
+# COCO has no auto-rickshaw class: auto-rickshaws will be detected as car/motorcycle/truck (a known limitation).
+detection:
+  model:
+    version: yolo11m-coco-pretrained
+    path: models/yolo11m.pt
+    device: cpu
+  confidence_threshold: 0.25
+  iou_threshold: 0.45
+  image_size: 1280
+  frame_stride: 1
+  class_mapping:
+    car: car
+    motorcycle: motorcycle
+    bus: bus
+    truck: truck
+  ignored_raw_classes:
+    - person
+    - traffic light
+    - bicycle
+    - stop sign
+    - fire hydrant
+    - parking meter
+    - bench
+    - backpack
+    - umbrella
+    - handbag
+    - suitcase
+    - bottle
+    - chair
+    - potted plant
+    - cell phone
+    - boat
+    - train
+    - airplane
+    - kite
+    - dog
+    - cat
+    - bird
+    - horse
+    - cow
+    - sports ball
+    - tv
+    - skateboard
+    - surfboard

@@ -113,6 +113,36 @@ def _congestion(args) -> None:
     print(run_congestion(Path(args.indicators), Path(args.formula)))
 
 
+def _graph(args) -> None:
+    from pattom.graph import load_graph, run_graph, validate_graph
+
+    spec = load_graph(Path(args.graph))
+    if args.validate_only:
+        print(json.dumps({"valid": True, "order": validate_graph(spec)}))
+        return
+    r = run_graph(spec)
+    print(json.dumps({"order": r.order, "status": r.status, "errors": r.errors, "outputs": r.outputs}, indent=2))
+    if any(v != "completed" for v in r.status.values()):
+        raise SystemExit(1)
+
+
+def _editor(args) -> None:
+    from pattom.graph.server import serve
+
+    serve(args.port)
+
+
+def _count_check(args) -> None:
+    import csv
+
+    from pattom.count_check import compare
+
+    out = compare(Path(args.manual), Path(args.counts))
+    for r in csv.DictReader(open(out, encoding="utf-8")):
+        print(f"{r['line_name']:>12} {r['class']:>13}  manual {r['manual']:>5}  auto {r['automatic']:>5}  error {r['error_pct']}%")
+    print(f"written: {out}")
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="pattom")
     sub = p.add_subparsers(required=True)
@@ -174,6 +204,11 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--offset-s", type=float, default=0.0, help="start of this file within its slot")
     s.set_defaults(func=_count)
 
+    s = sub.add_parser("count-check", help="compare automated counts with your manual counts (error per line and class)")
+    s.add_argument("manual", help="manual counts CSV (see configs/manual_counts.example.csv)")
+    s.add_argument("counts", help="interval_counts.csv from the run")
+    s.set_defaults(func=_count_check)
+
     s = sub.add_parser("signals", help="check a signal log read from the footage and summarise cycles")
     s.add_argument("log")
     s.set_defaults(func=_signals)
@@ -204,6 +239,15 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("indicators")
     s.add_argument("--formula", default=str(REPO_ROOT / "configs" / "congestion.yaml"))
     s.set_defaults(func=_congestion)
+
+    s = sub.add_parser("graph", help="validate and run a node-graph pipeline file")
+    s.add_argument("graph")
+    s.add_argument("--validate-only", action="store_true")
+    s.set_defaults(func=_graph)
+
+    s = sub.add_parser("editor", help="open the local visual node editor")
+    s.add_argument("--port", type=int, default=8765)
+    s.set_defaults(func=_editor)
 
     args = p.parse_args(argv)
     args.func(args)

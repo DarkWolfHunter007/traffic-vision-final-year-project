@@ -50,9 +50,26 @@ def load_config(path: Path) -> dict:
             raise ValueError(f"{path}: missing {k}")
     if cfg["pcu_table"] not in ("table_3_1", "table_III_1"):
         raise ValueError("pcu_table must be table_3_1 or table_III_1 (O3 is open; choose one)")
-    for name, a in cfg["approaches"].items():
-        if a.get("width_m") is None or a.get("signal_head") is None:
-            raise ValueError(f"approach {name}: width_m (measured on site) and signal_head are required")
+    active_approaches = {}
+    for name, a in (cfg.get("approaches") or {}).items():
+        if not isinstance(a, dict):
+            continue
+        if a.get("enabled") is False:
+            continue
+        if a.get("enabled") is True:
+            if a.get("width_m") is None or a.get("signal_head") is None:
+                raise ValueError(f"approach {name}: width_m (measured on site) and signal_head are required when enabled")
+            active_approaches[name] = a
+        else:
+            # When enabled is not explicitly set, include if complete
+            if a.get("width_m") is not None and a.get("signal_head") is not None:
+                active_approaches[name] = a
+
+    if not active_approaches:
+        raise ValueError("No approach has complete data (both width_m and signal_head). Enable or configure at least one approach.")
+
+    cfg["_skipped_approaches"] = sorted(set(cfg.get("approaches") or {}) - set(active_approaches))
+    cfg["approaches"] = active_approaches
     if cfg["effective_green"] not in GREEN_METHODS:
         raise ValueError(f"effective_green must be one of {GREEN_METHODS}")
     if cfg["volume_line_type"] not in ("arrival", "stop_line"):
@@ -131,6 +148,8 @@ def run_indicators(run_dir: Path, config: Path, signal_log: Path, register: Regi
         video_sha256=meta["video_sha256"], fps=meta["fps"], width=meta["width"], height=meta["height"],
         parameters={"config": str(config), "config_sha256": sha256_file(config),
                     "signal_log": str(signal_log), "signal_log_sha256": sha256_file(signal_log),
-                    "signal_summary": summary(load_log(signal_log)), "rows": len(rows)},
+                    "signal_summary": summary(load_log(signal_log)), "rows": len(rows),
+                    "notes": [f"approach(es) left out (disabled, or width/signal head missing): {cfg['_skipped_approaches']}"]
+                    if cfg.get("_skipped_approaches") else []},
     ).write(run_dir / "indicators.run.json")
     return out

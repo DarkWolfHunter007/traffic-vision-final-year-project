@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pattom Calibrate</title>
+<style>
+  :root {
+    --bg: #0b1120; --panel: #111a2e; --panel2: #18233d; --border: #26334f;
+    --text: #e6edf7; --muted: #8b9bb8; --primary: #3b82f6; --ok: #10b981; --bad: #ef4444; --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, "Segoe UI", sans-serif; height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; gap: 10px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  header h1 { font-size: 14px; margin: 0 10px 0 0; }
+  a { color: var(--primary); }
+  button, select, input { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px 9px; font: inherit; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--primary); }
+  button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  button.danger { color: var(--bad); }
+  button.small { padding: 2px 7px; font-size: 11px; }
+  input[type=number] { width: 90px; }
+  input[type=text] { width: 130px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #stage { flex: 1; overflow: auto; position: relative; background: #000; }
+  #wrap { position: relative; display: inline-block; }
+  #img, #over { display: block; }
+  #over { position: absolute; left: 0; top: 0; cursor: crosshair; }
+  #side { width: 400px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tab { flex: 1; padding: 8px 4px; text-align: center; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; font-size: 12px; }
+  .tab.active { color: var(--text); border-bottom-color: var(--primary); }
+  .pane { display: none; padding: 12px; overflow-y: auto; flex: 1; }
+  .pane.active { display: block; }
+  .card { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 10px; }
+  .card h3 { margin: 0 0 6px; font-size: 12px; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  td, th { border-bottom: 1px solid var(--border); padding: 3px 4px; text-align: left; }
+  td input, td select { width: 100%; padding: 2px 4px; }
+  #status { padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; min-height: 34px; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(245,158,11,.18); color: var(--warn); }
+  .active-mode { outline: 2px solid var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Calibrate</h1>
+  <label>Video <select id="video"></select></label>
+  <label>Second <input type="number" id="t" value="1" min="0" step="0.5"></label>
+  <button id="load" class="primary">Show frame</button>
+  <label>Zoom <select id="zoom"><option value="0.25">25%</option><option value="0.5" selected>50%</option><option value="0.75">75%</option><option value="1">100%</option></select></label>
+  <span class="hint" id="coord"></span>
+  <span style="flex:1"></span>
+  <a href="/" target="_self">Back to the pipeline editor</a>
+</header>
+<main>
+  <div id="stage"><div id="wrap"><img id="img" alt=""><canvas id="over"></canvas></div></div>
+  <div id="side">
+    <div class="tabs">
+      <div class="tab active" data-tab="ground">1 Ground points</div>
+      <div class="tab" data-tab="lines">2 Counting lines</div>
+      <div class="tab" data-tab="areas">3 Approach areas</div>
+      <div class="tab" data-tab="widths">4 Road widths</div>
+    </div>
+
+    <div class="pane active" id="pane-ground">
+      <div class="card">
+        <h3>What this does</h3>
+        <div class="hint">Tell the program how pixels in the video match real metres on the road. Click spots on the ground that you also measured with a tape. Nothing is guessed: the numbers you type are the numbers used.</div>
+      </div>
+      <div class="card">
+        <h3>A. A rectangle on the road</h3>
+        <div class="hint">Pick a rectangle you know the sides of (for example a zebra block). Press Start, then click its 4 corners in order, going around.</div>
+        <div class="row">
+          <label>Side 1→2 (m) <input type="number" id="rectA" step="0.01" min="0"></label>
+          <label>Side 2→3 (m) <input type="number" id="rectB" step="0.01" min="0"></label>
+        </div>
+        <button id="rectBtn">Start: click 4 corners</button>
+      </div>
+      <div class="card">
+        <h3>B. Check with a tape distance (needed)</h3>
+        <div class="hint">Click two ground spots, then type the tape distance between them. This is never used to fit the mapping; it tests it.</div>
+        <div class="row"><label>Distance (m) <input type="number" id="distM" step="0.01" min="0"></label></div>
+        <button id="distBtn">Start: click 2 spots</button>
+      </div>
+      <div class="card">
+        <h3>Or: single points spread across the junction</h3>
+        <div class="hint">Better than one small rectangle: pick 4 or more features far apart (stop-line corner, median tip, kerb corner). Type the point's position in metres in your own site grid, press Add point, then click it.</div>
+        <div class="row">
+          <label>x (m) <input type="number" id="ptX" step="0.01"></label>
+          <label>y (m) <input type="number" id="ptY" step="0.01"></label>
+          <label>Role <select id="ptRole"><option value="fit">fit</option><option value="check">check</option></select></label>
+        </div>
+        <button id="ptBtn">Add point: click it</button>
+      </div>
+      <div class="card">
+        <h3>C. Area where the mapping is valid</h3>
+        <div class="hint">Click the corners of the road area around your spots, then press Finish area.</div>
+        <div class="row"><button id="zoneBtn">Start area</button><button id="zoneDone">Finish area</button><button id="zoneClear" class="danger small">Clear</button></div>
+      </div>
+      <div class="card">
+        <h3>Points</h3>
+        <table id="ptTable"></table>
+        <div class="hint">Change a metre value or role here if a click was off. Role "check" points are never used for the fit.</div>
+      </div>
+      <div class="card">
+        <h3>Tape checks</h3>
+        <table id="distTable"></table>
+      </div>
+      <div class="card">
+        <h3>Result</h3>
+        <div id="groundResult" class="hint">Add 4 corner points, one check and the valid area.</div>
+        <div class="row"><button id="saveGround" class="primary">Save ground points</button></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-lines">
+      <div class="card"><div class="hint">Counting lines are drawn across the road. Click the start and the end of a line, then name it. The arrow shows which way counted vehicles move.</div></div>
+      <div class="card">
+        <div class="row">
+          <label>Name <input type="text" id="lnName" placeholder="N_arrival"></label>
+          <label>Type <select id="lnType"><option value="arrival">arrival (upstream, demand)</option><option value="stop_line">stop_line (discharge)</option><option value="exit">exit</option></select></label>
+        </div>
+        <div class="row">
+          <label>Approach <select id="lnApp"></select></label>
+          <label>Counts <select id="lnDir"><option value="left">one way (use flip)</option><option value="both">both ways</option></select></label>
+        </div>
+        <button id="lineBtn">Start: click 2 end points</button>
+      </div>
+      <div class="card"><h3>Lines</h3><table id="lineTable"></table>
+        <div class="row"><button id="saveLines" class="primary">Save lines</button></div>
+        <div class="hint" id="lineNote"></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-areas">
+      <div class="card"><div class="hint">For each approach, draw the area where queue and delay are measured and click its stop point. The stop point's metres come from step 1, so save the ground points first.</div></div>
+      <div class="card">
+        <div class="row"><label>Approach <select id="arApp"></select></label><label>Signal head <input type="text" id="arHead" placeholder="as in your signal log"></label></div>
+        <div class="row"><button id="arZone">Draw area (click corners)</button><button id="arDone">Finish area</button><button id="arStop">Click stop point</button></div>
+      </div>
+      <div class="card"><h3>Approach areas</h3><table id="areaTable"></table>
+        <div class="row"><button id="saveAreas" class="primary">Save areas</button></div></div>
+    </div>
+
+    <div class="pane" id="pane-widths">
+      <div class="card"><div class="hint">Road width across each approach at the stop line. Click one side of the road, then the other side, along the stop line. The width is read through the ground mapping, so it is a derived value (label it so in the report). A tape width is better when you have one.</div></div>
+      <div class="card">
+        <div class="row"><label>Approach <select id="wApp"></select></label><label>Signal head <input type="text" id="wHead" placeholder="optional"></label></div>
+        <div class="row"><button id="wBtn">Click 2 road edges</button></div>
+        <div class="row">Derived width: <b id="wVal">–</b></div>
+        <div class="row"><button id="wUse" class="primary">Use this width</button></div>
+        <div class="row"><label>Or tape width (m) <input type="number" id="wTape" step="0.01" min="0"></label><button id="wTapeUse">Save tape width</button></div>
+      </div>
+      <div class="card"><h3>Saved widths</h3><table id="wTable"></table></div>
+    </div>
+    <div id="status" class="hint">Choose a video and press Show frame.</div>
+  </div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const APPROACHES = ["north", "south", "east", "west"];
+const img = $("#img"), over = $("#over"), ctx = over.getContext("2d");
+let frameW = 0, frameH = 0, scale = 0.5;
+let mode = null, pending = [];
+// Calibration data, all in full-resolution frame pixels.
+let points = [];        // {id, px, m, role}
+let dists = [];         // {a_px, b_px, distance_m}
+let zone = [];          // polygon corners
+let lines = [];         // {name, type, approach, endpoints_px, direction}
+let areas = {};         // approach -> {zone_px, stop_point_px}
+let savedZones = {};    // zones already in definitions.yaml (shown, not editable here)
+let widths = {};
+let derivedWidth = null;    // {approach, width_m, err}
+let removedAreas = [];
+let mappingName = "all";
+let groundOk = false;
+let checkTimer = null;
+
+function say(msg, cls = "") { const s = $("#status"); s.className = cls || "hint"; s.textContent = msg; }
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || ("Server error " + r.status));
+  return d;
+}
+
+// ---------- frame ----------
+async function loadFrame() {
+  const v = $("#video").value; if (!v) { say("No video found in data/cfr. Run the cfr step first.", "bad"); return; }
+  say("Loading frame...");
+  try {
+    const r = await fetch(`/frame?video=${encodeURIComponent(v)}&t=${encodeURIComponent($("#t").value)}`);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); say(d.error || "Could not load the frame", "bad"); return; }
+    const w = +r.headers.get("X-Frame-Width"), h = +r.headers.get("X-Frame-Height");
+    const blob = await r.blob();
+    img.onload = () => { frameW = w; frameH = h; applyScale(); say(`Frame ${frameW}x${frameH}. Pick a tool on the right, then click on the picture.`); };
+    img.onerror = () => say("The browser could not show this frame.", "bad");
+    img.src = URL.createObjectURL(blob);
+  } catch (e) { say("Could not load the frame: " + e.message, "bad"); }
+}
+function applyScale() {
+  scale = +$("#zoom").value;
+  img.style.width = frameW * scale + "px"; img.style.height = frameH * scale + "px";
+  over.width = frameW * scale; over.height = frameH * scale;
+  draw();
+}
+function toFull(ev) {
+  const r = over.getBoundingClientRect();
+  return [Math.round((ev.clientX - r.left) / scale * 10) / 10, Math.round((ev.clientY - r.top) / scale * 10) / 10];
+}
+
+// ---------- drawing ----------
+const S = (p) => [p[0] * scale, p[1] * scale];
+function dot(p, color, label) {
+  const [x, y] = S(p);
+  ctx.fillStyle = color; ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); ctx.stroke();
+  if (label) { ctx.font = "bold 13px sans-serif"; ctx.lineWidth = 3; ctx.strokeText(label, x + 9, y - 7); ctx.fillStyle = "#fff"; ctx.fillText(label, x + 9, y - 7); }
+}
+function poly(pts, color, close) {
+  if (!pts.length) return;
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+  pts.forEach((p, i) => { const [x, y] = S(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  if (close) ctx.closePath();
+  ctx.stroke();
+}
+function arrowFor(l) {
+  // direction "left": counted vehicles come from the left-hand side walking a->b (y down) and cross to the right.
+  const [a, b] = l.endpoints_px; const dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy) || 1;
+  let nx = -dy / n, ny = dx / n;                  // right-hand normal, left -> right
+  if (l.direction === "right") { nx = -nx; ny = -ny; }
+  return { m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], n: [nx, ny] };
+}
+function head(x, y, nx, ny) {
+  const g = Math.atan2(ny, nx);
+  ctx.beginPath(); ctx.moveTo(x, y);
+  ctx.lineTo(x - 10 * Math.cos(g - 0.45), y - 10 * Math.sin(g - 0.45));
+  ctx.lineTo(x - 10 * Math.cos(g + 0.45), y - 10 * Math.sin(g + 0.45));
+  ctx.closePath(); ctx.fill();
+}
+function drawLine(l, color) {
+  poly(l.endpoints_px, color, false);
+  l.endpoints_px.forEach((p) => dot(p, color));
+  const a = arrowFor(l), [mx, my] = S(a.m), len = 32;
+  ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 3;
+  ctx.font = "bold 13px sans-serif"; ctx.fillText(l.name, mx + 8, my - 8);
+  const back = l.direction === "both" ? len : 0;
+  ctx.beginPath(); ctx.moveTo(mx - a.n[0] * back, my - a.n[1] * back); ctx.lineTo(mx + a.n[0] * len, my + a.n[1] * len); ctx.stroke();
+  head(mx + a.n[0] * len, my + a.n[1] * len, a.n[0], a.n[1]);
+  if (l.direction === "both") head(mx - a.n[0] * len, my - a.n[1] * len, -a.n[0], -a.n[1]);
+}
+function draw() {
+  ctx.clearRect(0, 0, over.width, over.height);
+  poly(zone, "#22d3ee", true);
+  points.forEach((p) => dot(p.px, p.role === "fit" ? "#3b82f6" : "#f59e0b", p.id));
+  dists.forEach((d) => { poly([d.a_px, d.b_px], "#f59e0b", false); dot(d.a_px, "#f59e0b"); dot(d.b_px, "#f59e0b"); });
+  lines.forEach((l) => drawLine(l, "#10b981"));
+  for (const [name, a] of Object.entries(areas)) {
+    poly(a.zone_px || [], "#a78bfa", true);
+    if (a.zone_px && a.zone_px[0]) { const [x, y] = S(a.zone_px[0]); ctx.fillStyle = "#a78bfa"; ctx.font = "bold 13px sans-serif"; ctx.fillText(name, x + 6, y - 6); }
+    if (a.stop_point_px) dot(a.stop_point_px, "#a78bfa", name + " stop");
+  }
+  pending.forEach((p, i) => dot(p, "#fde047", String(i + 1)));
+  if (pending.length > 1) poly(pending, "#fde047", false);
+}
+
+// ---------- clicking ----------
+function setMode(m, n, hint) {
+  mode = m; pending = []; need = n;
+  document.querySelectorAll("button").forEach((b) => b.classList.remove("active-mode"));
+  if (m) say(hint, "warn"); draw();
+}
+let need = 0;
+over.addEventListener("mousemove", (e) => { const p = toFull(e); $("#coord").textContent = `x ${p[0]}  y ${p[1]}`; });
+over.addEventListener("click", (e) => {
+  if (!mode || !frameW) return;
+  pending.push(toFull(e));
+  if (["zone", "arzone"].includes(mode)) { draw(); say(`${pending.length} corner(s). Press Finish area when done.`, "warn"); return; }
+  if (pending.length < need) { draw(); say(`Point ${pending.length} of ${need} placed. Click the next one.`, "warn"); return; }
+  const got = pending.slice(); const m = mode; mode = null; pending = [];
+  finish(m, got);
+});
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") { setMode(null, 0); say("Cancelled."); } });
+
+function finish(m, got) {
+  if (m === "rect") {
+    const A = parseFloat($("#rectA").value), B = parseFloat($("#rectB").value);
+    if (!(A > 0) || !(B > 0)) { say("Type both side lengths first, then start again.", "bad"); draw(); return; }
+    const ms = [[0, 0], [A, 0], [A, B], [0, B]];
+    // Each rectangle sets its own origin, so a second one would clash with the first. It replaces it.
+    points = points.filter((p) => p.role !== "fit");
+    got.forEach((px, i) => points.push({ id: "Z" + nextId(), px, m: ms[i], role: "fit" }));
+    say("Rectangle added. Now add a tape check (B) and the valid area (C).");
+  } else if (m === "point") {
+    const x = parseFloat($("#ptX").value), y = parseFloat($("#ptY").value);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) { say("Type x and y in metres first, then start again.", "bad"); draw(); return; }
+    points.push({ id: "Z" + nextId(), px: got[0], m: [x, y], role: $("#ptRole").value });
+    say("Point added.");
+  } else if (m === "dist") {
+    const d = parseFloat($("#distM").value);
+    if (!(d > 0)) { say("Type the tape distance first, then start again.", "bad"); draw(); return; }
+    dists.push({ a_px: got[0], b_px: got[1], distance_m: d });
+    say("Tape check added.");
+  } else if (m === "line") {
+    const name = $("#lnName").value.trim();
+    if (!name) { say("Type a line name first, then start again.", "bad"); draw(); return; }
+    if (lines.some((l) => l.name === name)) { say("That name is already used.", "bad"); draw(); return; }
+    lines.push({ name, type: $("#lnType").value, approach: $("#lnApp").value, endpoints_px: got, direction: $("#lnDir").value });
+    say("Line added. Use Flip if the arrow points the wrong way.");
+  } else if (m === "arstop") {
+    const a = $("#arApp").value; areas[a] = areas[a] || {}; delete areas[a].saved_only; areas[a].stop_point_px = got[0];
+    if ($("#arHead").value.trim()) areas[a].signal_head = $("#arHead").value.trim();
+    say("Stop point set.");
+  } else if (m === "width") {
+    measureWidth(got);
+  }
+  renderAll(); queueCheck();
+}
+function nextId() { let i = 1; while (points.some((p) => p.id === "Z" + i)) i++; return i; }
+
+// ---------- tables ----------
+function renderAll() {
+  const t = $("#ptTable");
+  t.innerHTML = "<tr><th>id</th><th>x m</th><th>y m</th><th>role</th><th></th></tr>";
+  points.forEach((p, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${p.id}</td><td><input type="number" step="0.01" value="${p.m[0]}"></td><td><input type="number" step="0.01" value="${p.m[1]}"></td>
+      <td><select><option ${p.role === "fit" ? "selected" : ""}>fit</option><option ${p.role === "check" ? "selected" : ""}>check</option></select></td><td><button class="small danger">x</button></td>`;
+    const [x, y] = tr.querySelectorAll("input"); const sel = tr.querySelector("select");
+    x.onchange = () => { p.m[0] = parseFloat(x.value); queueCheck(); }; y.onchange = () => { p.m[1] = parseFloat(y.value); queueCheck(); };
+    sel.onchange = () => { p.role = sel.value; draw(); queueCheck(); };
+    tr.querySelector("button").onclick = () => { points.splice(i, 1); renderAll(); queueCheck(); };
+    t.appendChild(tr);
+  });
+  const d = $("#distTable");
+  d.innerHTML = "<tr><th>tape m</th><th></th></tr>";
+  dists.forEach((x, i) => { const tr = document.createElement("tr"); tr.innerHTML = `<td>${x.distance_m}</td><td><button class="small danger">x</button></td>`; tr.querySelector("button").onclick = () => { dists.splice(i, 1); renderAll(); queueCheck(); }; d.appendChild(tr); });
+  const lt = $("#lineTable");
+  lt.innerHTML = "<tr><th>name</th><th>type</th><th>approach</th><th></th></tr>";
+  lines.forEach((l, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${l.name}</td><td>${l.type}</td><td>${l.approach}</td><td><button class="small">flip</button> <button class="small danger">x</button></td>`;
+    const [flip, del] = tr.querySelectorAll("button");
+    flip.onclick = () => { if (l.direction === "left") l.direction = "right"; else if (l.direction === "right") l.direction = "left"; renderAll(); };
+    del.onclick = () => { lines.splice(i, 1); renderAll(); };
+    lt.appendChild(tr);
+  });
+  const at = $("#areaTable");
+  at.innerHTML = "<tr><th>approach</th><th>area</th><th>stop point</th><th>signal</th><th></th></tr>";
+  for (const [name, a] of Object.entries(areas)) {
+    const tr = document.createElement("tr");
+    const stopTxt = a.saved_only ? (a.stop_point_m ? `saved (${a.stop_point_m.join(", ")} m)` : "not set, click again") : (a.stop_point_px ? "set" : "missing");
+    tr.innerHTML = `<td>${name}</td><td>${(a.zone_px || []).length} corners</td><td>${stopTxt}</td><td>${a.signal_head || "no head"}</td><td><button class="small danger">x</button></td>`;
+    tr.querySelector("button").onclick = () => { if (a.saved_only) removedAreas.push(name); delete areas[name]; renderAll(); };
+    at.appendChild(tr);
+  }
+  const wt = $("#wTable");
+  wt.innerHTML = "<tr><th>approach</th><th>width m (type)</th><th>head</th><th>active</th><th></th></tr>";
+  for (const [k, v] of Object.entries(widths)) {
+    const tr = document.createElement("tr");
+    const activeText = v.enabled !== false ? "✓ on" : "off";
+    tr.innerHTML = `<td>${k}</td><td>${v.width_m ?? "not set"} ${v.width_m != null ? "(" + (v.value_type || "unlabelled") + ")" : ""}</td><td>${v.signal_head || "–"}</td><td><button class="small">${activeText}</button></td><td><button class="small danger">x</button></td>`;
+    const [tBtn, dBtn] = tr.querySelectorAll("button");
+    tBtn.onclick = async () => {
+      try {
+        const r = await api("/calib/width", { approach: k, toggle: true });
+        widths[k].enabled = r.enabled;
+        renderAll();
+        say(`${k} is now ${r.enabled ? "enabled" : "disabled"}.`);
+      } catch (e) { say(e.message, "bad"); }
+    };
+    dBtn.onclick = async () => {
+      try {
+        await api("/calib/width", { approach: k, remove: true });
+        delete widths[k];
+        renderAll();
+        say(`Removed ${k} width.`);
+      } catch (e) { say(e.message, "bad"); }
+    };
+    wt.appendChild(tr);
+  }
+  draw();
+}
+
+// ---------- ground mapping check ----------
+function spec() { return { name: mappingName, zone_px: zone, points, check_distances: dists }; }
+function queueCheck() { clearTimeout(checkTimer); checkTimer = setTimeout(runCheck, 250); }
+async function runCheck() {
+  const el = $("#groundResult");
+  if (points.filter((p) => p.role === "fit").length < 4) { groundOk = false; el.className = "hint"; el.textContent = "Add 4 corner points (A), then a tape check (B) and the valid area (C)."; return; }
+  try {
+    const r = await api("/calib/ground_check", { mapping: spec() });
+    groundOk = true;
+    el.className = "";
+    el.textContent = `Largest check error: ${r.max_check_error_m} m (fit residual ${r.rms_fit_residual_m} m). You decide whether that is small enough.`;
+  } catch (e) { groundOk = false; el.className = "warn"; el.textContent = e.message; }
+}
+async function measureWidth(got) {
+  const approach = $("#wApp").value;
+  try {
+    const r = await api("/calib/measure", { a_px: got[0], b_px: got[1] });
+    derivedWidth = { approach, width_m: r.distance_m, err: r.max_check_error_m };
+    $("#wVal").textContent = `${approach}: ${r.distance_m} m (derived, saved mapping's check error ${r.max_check_error_m} m)`;
+    say("Width read. Press Use this width to save it.");
+  } catch (e) { derivedWidth = null; $("#wVal").textContent = "–"; say(e.message, "bad"); }
+}
+function clearDerived() { derivedWidth = null; $("#wVal").textContent = "–"; }
+
+// ---------- buttons ----------
+$("#load").onclick = loadFrame;
+$("#zoom").onchange = applyScale;
+document.querySelectorAll(".tab").forEach((t) => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
+  document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === "pane-" + t.dataset.tab));
+  setMode(null, 0);
+});
+$("#rectBtn").onclick = () => {
+  if (points.some((p) => p.role === "fit") && !confirm("This replaces the rectangle corners you already have. Continue?")) return;
+  setMode("rect", 4, "Click the 4 corners of the rectangle in order, going around. Esc cancels.");
+};
+$("#ptBtn").onclick = () => setMode("point", 1, "Click the ground feature whose position you typed.");
+$("#distBtn").onclick = () => setMode("dist", 2, "Click the two ground spots you measured with the tape.");
+$("#zoneBtn").onclick = () => setMode("zone", 0, "Click the corners of the valid road area, then press Finish area.");
+$("#zoneDone").onclick = () => {
+  if (mode !== "zone") { say("Press Start area first.", "bad"); return; }
+  if (pending.length < 3) { say("Need at least 3 corners.", "bad"); return; }
+  zone = pending.slice(); mode = null; pending = []; renderAll(); queueCheck(); say("Valid area set.");
+};
+$("#zoneClear").onclick = () => { zone = []; renderAll(); queueCheck(); };
+$("#saveGround").onclick = async () => {
+  if (!zone.length) { say("Draw the valid area (C) first.", "bad"); return; }
+  try {
+    const r = await api("/calib/ground_save", { mapping: spec() });
+    clearDerived(); await reloadAreas();
+    const sp = Object.entries(r.stop_points || {}).map(([k, v]) => `${k} stop point ${v}`).join("; ");
+    const other = (r.other_mappings || []).length ? ` Other mappings kept: ${r.other_mappings.join(", ")}.` : "";
+    say(`Saved calibration/ground.yaml. Largest check error ${r.report.max_check_error_m} m.${other}${sp ? " " + sp + "." : ""}`, sp.includes("cleared") ? "warn" : "ok");
+  }
+  catch (e) { say(e.message, "bad"); }
+};
+$("#lineBtn").onclick = () => setMode("line", 2, "Click the start and the end of the counting line.");
+$("#saveLines").onclick = async () => {
+  try { const r = await api("/calib/lines_save", { lines }); $("#lineNote").textContent = r.movements_dropped ? `${r.movements_dropped} movement(s) pointed at removed lines and were dropped.` : ""; say(`Saved ${r.lines} line(s) to configs/lines.yaml.`, "ok"); }
+  catch (e) { say(e.message, "bad"); }
+};
+$("#arZone").onclick = () => setMode("arzone", 0, "Click the corners of this approach's queue area.");
+$("#arDone").onclick = () => {
+  if (mode !== "arzone") { say("Press Draw area first.", "bad"); return; } if (pending.length < 3) { say("Need at least 3 corners.", "bad"); return; }
+  const a = $("#arApp").value; areas[a] = areas[a] || {}; delete areas[a].saved_only; areas[a].zone_px = pending.slice();
+  if ($("#arHead").value.trim()) areas[a].signal_head = $("#arHead").value.trim();
+  mode = null; pending = []; renderAll(); say("Area set. Click its stop point next.");
+};
+$("#arStop").onclick = () => setMode("arstop", 1, "Click the stop point for this approach (where vehicles stop at the stop line).");
+$("#saveAreas").onclick = async () => {
+  const out = {}; for (const [k, a] of Object.entries(areas)) if (!a.saved_only) out[k] = { zone_px: a.zone_px, stop_point_px: a.stop_point_px, signal_head: a.signal_head || $("#arHead").value.trim() };
+  try {
+    const r = await api("/calib/zones_save", { approaches: out, remove: removedAreas });
+    removedAreas = []; await reloadAreas();
+    say("Saved approach areas: " + (r.approaches.join(", ") || "none"), "ok");
+  }
+  catch (e) { say(e.message, "bad"); }
+};
+$("#wApp").onchange = clearDerived;
+$("#wBtn").onclick = () => setMode("width", 2, "Click one edge of the road, then the other, along the stop line.");
+$("#wUse").onclick = async () => {
+  if (derivedWidth == null) { say("Measure a width first.", "bad"); return; }
+  try {
+    const r = await api("/calib/width", { approach: derivedWidth.approach, width_m: derivedWidth.width_m, value_type: "derived", check_error_m: derivedWidth.err, signal_head: $("#wHead").value });
+    widths[r.approach] = { width_m: r.width_m, value_type: r.value_type, signal_head: $("#wHead").value.trim() || null, enabled: r.enabled !== false }; clearDerived(); renderAll();
+    say(`Saved ${r.approach} width ${r.width_m} m (derived).` + (r.warning ? " " + r.warning : ""), r.warning ? "warn" : "ok");
+  }
+  catch (e) { say(e.message, "bad"); }
+};
+$("#wTapeUse").onclick = async () => {
+  const w = parseFloat($("#wTape").value); if (!(w > 0)) { say("Type the tape width.", "bad"); return; }
+  try {
+    const r = await api("/calib/width", { approach: $("#wApp").value, width_m: w, value_type: "measured", signal_head: $("#wHead").value });
+    widths[r.approach] = { width_m: r.width_m, value_type: r.value_type, signal_head: $("#wHead").value.trim() || null, enabled: r.enabled !== false }; renderAll();
+    say(`Saved ${r.approach} width ${r.width_m} m (measured).` + (r.warning ? " " + r.warning : ""), r.warning ? "warn" : "ok");
+  }
+  catch (e) { say(e.message, "bad"); }
+};
+
+function setAreas(zones) {
+  for (const k of Object.keys(areas)) if (areas[k].saved_only) delete areas[k];
+  for (const [k, z] of Object.entries(zones || {})) if (!areas[k]) areas[k] = { zone_px: z.zone_px, stop_point_px: z.stop_point_px || null, stop_point_m: z.stop_point_m, signal_head: z.signal_head, saved_only: true };
+}
+async function reloadAreas() { const st = await api("/calib/state"); for (const k of Object.keys(areas)) if (!areas[k].saved_only) delete areas[k]; setAreas(st.zones); renderAll(); }
+
+// ---------- start ----------
+(async () => {
+  for (const id of ["#lnApp", "#arApp", "#wApp"]) $(id).innerHTML = APPROACHES.map((a) => `<option>${a}</option>`).join("");
+  try {
+    const st = await api("/calib/state");
+    $("#video").innerHTML = st.videos.map((v) => `<option>${v}</option>`).join("");
+    const names = st.ground_mappings || [];
+    if (names.length) {
+      mappingName = names[0];
+      const g = st.ground.mappings[mappingName];
+      points = (g.points || []).map((p) => ({ id: p.id, px: p.px, m: p.m, role: p.role })); dists = g.check_distances || []; zone = g.zone_px || [];
+      if (names.length > 1) say(`ground.yaml has ${names.length} mappings; this page edits "${mappingName}" and keeps the others.`, "warn");
+    }
+    lines = (st.lines || []).map((l) => ({ ...l }));
+    setAreas(st.zones);
+    widths = st.widths || {};
+    renderAll(); queueCheck();
+    if (st.videos.length) loadFrame();
+  } catch (e) { say("Could not load saved settings: " + e.message, "bad"); }
+})();
+</script>
+</body>
+</html>

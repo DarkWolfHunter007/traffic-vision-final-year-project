@@ -136,6 +136,21 @@ def test_congestion_weights_required(tmp_path):
         congestion.load_formula(f)
 
 
+def test_indicators_approach_filtering(tmp_path):
+    f = tmp_path / "ind.yaml"
+    f.write_text(yaml.safe_dump({
+        "pcu_table": "table_3_1", "class_to_pcu_row": {}, "volume_line_type": "arrival",
+        "effective_green": "displayed_green",
+        "approaches": {
+            "north": {"width_m": 7.0, "signal_head": "N"},
+            "south": {"width_m": 5.0, "signal_head": None},      # incomplete -> auto-skipped
+            "east": {"width_m": 7.0, "signal_head": "E", "enabled": False}, # explicitly disabled -> skipped
+        }}))
+    cfg = indicators.load_config(f)
+    assert set(cfg["approaches"]) == {"north"}
+
+
+
 def test_congestion_minmax_and_missing():
     rows = [{"d": "10"}, {"d": "30"}, {"d": ""}]
     out, notes = congestion.compute(rows, {"formula_version": "t", "approved": True, "indicators": [
